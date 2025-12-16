@@ -109,8 +109,10 @@ class Planner:
                             f"It will arrive {adv_times_to_n[n_j] - times_v_n[v_i][n_j]} seconds"
                             f" before the adversary and contributes {scores_n[n_j]} points to the total score."
                         )
+                        self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.ASSIGNED
                         break
-                self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.UNASSIGNED
+                else:
+                    self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.UNASSIGNED
         else:
             raise Exception("No plan was found")
 
