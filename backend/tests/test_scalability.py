@@ -4,9 +4,9 @@ import pytest
 
 from graphtactics.dtos import PlanResponse
 from graphtactics.planner import Planner
-from graphtactics.serializer import Serializer
 from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.scenario import Scenario
+from graphtactics.serializer import Serializer
 from graphtactics.vehicle import Vehicle
 
 # Ca n'est pas le solver qui est le facteur limitant en temps, mais la recherche des trajets à partir

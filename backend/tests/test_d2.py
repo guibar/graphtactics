@@ -5,10 +5,10 @@ from shapely.geometry import Point
 
 from graphtactics.dtos import PlanResponse
 from graphtactics.planner import Planner
-from graphtactics.serializer import Serializer
 from graphtactics.road_network import RoadNetwork
 from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.scenario import Scenario
+from graphtactics.serializer import Serializer
 from graphtactics.vehicle import Vehicle
 
 

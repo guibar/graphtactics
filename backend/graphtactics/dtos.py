@@ -14,7 +14,7 @@ from .planner import Plan
 from .road_network import RoadNetwork
 from .scenario import Scenario
 from .utils import get_star_polygon
-from .vehicle import Vehicle, VehicleStatus
+from .vehicle import Vehicle
 
 
 def to_feature_collection(features: list[dict[str, Any]]) -> dict[str, Any]:
