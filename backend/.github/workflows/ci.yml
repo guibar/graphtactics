@@ -1,0 +1,50 @@
+name: Neotac Interceptor CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Restore network data cache
+      id: cache-networks
+      uses: actions/cache/restore@v4
+      with:
+        path: data/networks
+        key: network-data-${{ runner.os }}-${{ hashFiles('data/networks/*.graphml', 'data/networks/*.gpkg') }}
+        restore-keys: |
+          network-data-${{ runner.os }}-
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: 5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        cache-dependency-glob: "pyproject.toml"
+    - name: Setup python environment
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Check Python version
+      run: python --version
+    - name: Install dependencies
+      run: uv pip install --system -e .[dev]
+    - name: Lint with Ruff
+      run: uv run ruff check .
+    - name: Test with pytest
+      run: |
+        python -m pytest --cov-report html --cov interceptor -vvv
+    - name: Save network data cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: data/networks
+        key: ${{ steps.cache-networks.outputs.cache-primary-key }}
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+

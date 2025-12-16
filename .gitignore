@@ -1,0 +1,58 @@
+
+# misc
+.vscode/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Environment variables (contains secrets)
+.env
+.env.local
+.env.*.local
+vars.env
+
+build
+dist
+/**/.pytest_cache/
+
+
+# Project notes and todos
+notes.md
+todo.md
+
+# backend
+/backend/.coverage
+/backend/*.py[cod]
+/backend/**/cache/
+/backend/**/__pycache__/
+/backend/.venv/
+/backend/uv.lock
+/backend/*.egg-info/
+/backend/htmlcov/
+/backend/**/.pytest_cache/
+/backend/.ruff_cache/
+/backend/tests/data/
+
+/backend/data/networks/*
+!/backend/data/networks/.gitkeep
+/backend/data/plans/*
+!/backend/data/plans/.gitkeep
+/backend/data/departements/*
+!/backend/data/departements/.gitkeep
+
+# frontend
+/frontend/node_modules
+/frontend/dist
+/frontend/package-lock.json
+/frontend/npm-debug.log*
+
+/terraform/.terraform/
+/terraform/.terraform.lock.hcl
+/terraform/terraform.tfstate
+/terraform/terraform.tfstate.*
+/terraform/crash.log

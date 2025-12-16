@@ -1,0 +1,33 @@
+name: Neotac Interceptor CD
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+      - name: Setup python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check Python version
+        run: python --version
+      - name: Install requirements
+        run: uv pip install --system -e .[dev]
+      - name: Lint with Ruff
+        run: uv run ruff check .
+      #- name: Run Test # running tests
+      #  run: PYTHONPATH=. pytest --cov-report html --cov interceptor -vvv
+      - name: Build package wheel
+        run: uv build
+      - name: List directory
+        run: ls dist

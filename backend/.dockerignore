@@ -1,0 +1,9 @@
+.git
+.github
+conf
+cache
+tests
+data/plans/*
+venv
+notes.md
+todo.md

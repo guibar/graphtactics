@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graphtactics"
+version = "1.0"
+description = "An algorithm for intercepting vehicles based on their last known position and time elapsed since it was last seen at that position."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "GNU General Public License v3.0"}
+authors = [
+    {name = "Guillaume Barreau", email = "g.barreau@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # Web framework
+    "fastapi~=0.115.0",
+    "uvicorn[standard]~=0.32.0",
+    # Scientific computing
+    "numpy~=1.26.4",
+    "scikit-learn~=1.5.0",
+    # Optimization
+    "ortools~=9.11.0",
+    # Geospatial
+    "osmnx==2.0.6",
+    "Shapely~=2.0.6",
+    "networkx~=3.4.0",
+    "geopandas~=1.0.1",
+    "pandas~=2.2.0",
+    # Utilities
+    "python-dateutil>=2.9.0",
+    "pygithub>=2.8.1",
+    "python-dotenv>=1.2.1",
+    "pydantic~=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest~=8.3.0",
+    "pytest-timeout~=2.3.0",
+    "pytest-cov",
+    "ruff",
+    "httpx~=0.28.0",
+]
+
+[project.urls]
+Homepage = "https://www.eig.numerique.gouv.fr/defis/neotac/"
+Repository = "https://github.com/guibar/graphtactics"
+
+[tool.setuptools]
+packages = ["graphtactics"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.3.5",
+    "ruff>=0.14.9",
+]

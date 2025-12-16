@@ -1,0 +1,59 @@
+{
+  "app": {
+    "title": "Génération de dispositifs de recherche optimisés",
+    "department": "Département:",
+    "elapsedTime": "Temps écoulé:",
+    "mins": "mins",
+    "secs": "secs",
+    "nbVehicles": "Nombre de Véhicules:",
+    "getVehicles": "Obtenir (x) véhicules",
+    "generate": "Générer Dispositif",
+    "clearOutput": "Effacer le Dispositif",
+    "clearAll": "Effacer Tout",
+    "loading": "Chargement...",
+    "error": {
+      "timeout": "Le temps maximum de {timeout} secondes a été dépassé sur l'appel à {url}",
+      "unknown": "Erreur de type inconnue sur l'appel à {url}",
+      "noVehicles": "Problème de données\nIl faut au moins un véhicule pour pouvoir générer un dispositif."
+    },
+    "tooltips": {
+      "vid": "VID : {id}",
+      "destination": "Destination du vehicule {id}",
+      "affectation": "VID: {vid}<br>Noeud origine: {origin}<br>Noeud destination: {destination}<br>Temps de trajet: {travel_time}<br>Temps d'attente: {time_margin}<br>Contrbution au score: {score}"
+    }
+  },
+  "stats": {
+    "title": "Le dipositif en chiffres",
+    "nbEscapeNodes": "Nbre points de fuite:",
+    "nbIsochronePoints": "Nbre points isochrones:",
+    "nbCandidateNodes": "Points candidats:",
+    "maxScore": "Score maximum:",
+    "score": "Score obtenu:",
+    "efficiency": "Étanchéité:",
+    "nbVehicles": "Véhicules disponibles:",
+    "nbAssignments": "Véhicules moblisés:",
+    "vehicleTimes": "Temps véhicules (en sec.)",
+    "min": "min.",
+    "avg": "moy.",
+    "max": "max.",
+    "travel": "Trajet",
+    "wait": "Attente"
+  },
+  "help": {
+    "title": "Aide",
+    "intro": "Ce logiciel permet à un utilisateur de bâtir de manière intuitive et interactive un scénario de situation d'urgence nécessitant le déclenchement d'un dispositif de recherche de véhicule. Une fois le scénario bâti, il peut être soumis au générateur de dispositifs de recherche qui calculera ce qu'il pense être le meilleur dispositif pour le cas soumis. L'utilisateur peut définir un scénario et demander la génération d'un dispositif correspondant à ce scénario.",
+    "dataTitle": "Les données soumises au générateur",
+    "point1": "Le premier menu déroulant propose le choix d'un certain nombre de zone géographiques servant de context au scénario qui va être bâti. Ces zones sont (sauf exception):",
+    "point1_sub1": "soit un département représenté par son code à 2 chiffres (30 = Gard, 60 = Oise, ...),",
+    "point1_sub2": "soit un département et les départements qui lui sont limitrophes quand le numéro du département et suivi de '+ C' (74 + C = 74 + 73 + 01),",
+    "point2_pre": "La dernière position connue du véhicule recherché est définie en déplacant (clic gauche et glissement) l'icone",
+    "point2_post": "à l'endroit désiré sur la carte.",
+    "point3": "Le temps écoulé depuis que l'adversaire a été vu à la dernière position connue. Plus ce temps est long est plus le véhicule recherché a pu s'eloigner du point où il a été vu. Ce temps est donc fondamental pour le calcul du dispositif.",
+    "point4": "La position des véhicules de police/gendarmerie mobilisables pour le dispositif dans la zone du scénario. Dans une version de production, ces positions seraient les positions réelles des véhicules présents. Dans cette version, les positions sont fictives et définies par l'utilisateur. Les véhicules peuvent être créés de 2 façons:",
+    "point4_sub1": "Soit en cliquant n'importe où sur la carte ce qui fera apparaître un véhicule à l'endroit du clic,",
+    "point4_sub2_pre": "Soit en utilisant le bouton",
+    "point4_sub2_btn": "Obtenir (x) véhicules",
+    "point4_sub2_post": "qui fera apparaître x véhicules à des positions aléatoires dans la zone.",
+    "point4_end": "Tout véhicule crée peuvent être déplacé à volonté sur la carte. Un véhicule peut être supprimé en cliquant dessus."
+  }
+}

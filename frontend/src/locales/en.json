@@ -1,0 +1,59 @@
+{
+  "app": {
+    "title": "Optimized Search Plan Generation",
+    "department": "Department:",
+    "elapsedTime": "Elapsed Time:",
+    "mins": "mins",
+    "secs": "secs",
+    "nbVehicles": "Number of Vehicles:",
+    "getVehicles": "Get (x) vehicles",
+    "generate": "Generate Plan",
+    "clearOutput": "Clear Plan",
+    "clearAll": "Clear All",
+    "loading": "Loading...",
+    "error": {
+      "timeout": "Maximum time of {timeout} seconds exceeded on call to {url}",
+      "unknown": "Unknown error type on call to {url}",
+      "noVehicles": "Data Problem\nAt least one vehicle is required to generate a plan."
+    },
+    "tooltips": {
+      "vid": "VID: {id}",
+      "destination": "Destination of vehicle {id}",
+      "affectation": "VID: {vid}<br>Origin Node: {origin}<br>Destination Node: {destination}<br>Travel Time: {travel_time}<br>Waiting Time: {time_margin}<br>Score Contribution: {score}"
+    }
+  },
+  "stats": {
+    "title": "Plan Statistics",
+    "nbEscapeNodes": "Nb escape nodes:",
+    "nbIsochronePoints": "Nb isochrone points:",
+    "nbCandidateNodes": "Candidate nodes:",
+    "maxScore": "Max score:",
+    "score": "Score obtained:",
+    "efficiency": "Efficiency:",
+    "nbVehicles": "Vehicles available:",
+    "nbAssignments": "Vehicles mobilised:",
+    "vehicleTimes": "Mobilised Vehicles stats (in sec.)",
+    "min": "min.",
+    "avg": "avg.",
+    "max": "max.",
+    "travel": "Travel",
+    "wait": "Wait"
+  },
+  "help": {
+    "title": "Help",
+    "intro": "This software allows a user to intuitively and interactively build an emergency situation scenario requiring the deployment of a vehicle search plan. Once the scenario is built, it can be submitted to the search plan generator which will calculate what it believes to be the best plan for the submitted case. The user can define a scenario and request the generation of a plan corresponding to this scenario.",
+    "dataTitle": "Data submitted to the generator",
+    "point1": "The first dropdown menu offers the choice of a number of geographical zones serving as context for the scenario to be built. These zones are (with exceptions):",
+    "point1_sub1": "either a department represented by its 2-digit code (30 = Gard, 60 = Oise, ...),",
+    "point1_sub2": "or a department and its bordering departments when the department number is followed by '+ C' (74 + C = 74 + 73 + 01),",
+    "point2_pre": "The last known position of the searched vehicle is defined by moving (left click and drag) the icon",
+    "point2_post": "to the desired location on the map.",
+    "point3": "The time elapsed since the adversary was seen at the last known position. The longer this time, the further the searched vehicle could have moved from the point where it was seen. This time is therefore a central factor for the calculation of the plan.",
+    "point4": "The position of police vehicles available for the plan in the scenario zone. In a production version, these positions would be the real positions of the vehicles on the ground. In this version, the positions are fictitious and defined by the user. Vehicles can be created in 2 ways:",
+    "point4_sub1": "Either by clicking anywhere on the map which will make a vehicle appear at the click location,",
+    "point4_sub2_pre": "Or by using the button",
+    "point4_sub2_btn": "Get (x) vehicles",
+    "point4_sub2_post": "which will make x vehicles appear at random positions in the zone.",
+    "point4_end": "Any created vehicle can be moved at will on the map. A vehicle can be deleted by clicking on it."
+  }
+}
