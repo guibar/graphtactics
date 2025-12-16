@@ -3,11 +3,11 @@ module.exports = {
   runtimeCompiler: true,
   chainWebpack: config => {
     config
-        .plugin('html')
-        .tap(args => {
-            args[0].title = "PathBlocker v0.2";
-            return args;
-        })
+      .plugin('html')
+      .tap(args => {
+        args[0].title = "PathBlocker v0.2";
+        return args;
+      })
   },
   // devServer Options don't belong into `configureWebpack`
   devServer: {
@@ -17,7 +17,7 @@ module.exports = {
     allowedHosts: 'all',
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:8081',
         changeOrigin: true,
         pathRewrite: { '^/api': '' }
       }

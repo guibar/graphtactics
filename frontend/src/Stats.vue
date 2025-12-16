@@ -35,11 +35,19 @@
     </table>
 </div>
 </template>
-<script>
-export default {
+<script lang="ts">
+import { defineComponent, PropType } from 'vue';
+import { StatsData } from './types';
+
+export default defineComponent({
     name: "Stats",
-    props: ["stats"]
-};
+    props: {
+        stats: {
+            type: Object as PropType<StatsData>,
+            required: true
+        }
+    }
+});
 </script>
 
 <style scoped>

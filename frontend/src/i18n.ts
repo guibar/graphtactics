@@ -2,7 +2,7 @@ import { createI18n } from 'vue-i18n'
 import en from './locales/en.json'
 import fr from './locales/fr.json'
 
-function getBrowserLocale() {
+function getBrowserLocale(): string | undefined {
   const navigatorLocale = navigator.languages !== undefined
     ? navigator.languages[0]
     : navigator.language
@@ -15,16 +15,16 @@ function getBrowserLocale() {
   return trimmedLocale
 }
 
-function getStartingLocale() {
-    const persistedLocale = localStorage.getItem('user-locale')
-    if (persistedLocale) {
-        return persistedLocale
-    }
-    const browserLocale = getBrowserLocale()
-    if (browserLocale === 'fr') {
-        return 'fr'
-    }
-    return 'en'
+function getStartingLocale(): string {
+  const persistedLocale = localStorage.getItem('user-locale')
+  if (persistedLocale) {
+    return persistedLocale
+  }
+  const browserLocale = getBrowserLocale()
+  if (browserLocale === 'fr') {
+    return 'fr'
+  }
+  return 'en'
 }
 
 const i18n = createI18n({

@@ -118,15 +118,26 @@ P
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import L from "leaflet";
-import { myIcons, emitter } from "@/main";
+import { myIcons, emitter } from "@/common";
 import { LMap, LTileLayer, LMarker, LGeoJson, LControlLayers, LLayerGroup, LTooltip} from '@vue-leaflet/vue-leaflet';
 import 'leaflet-arrowheads'
 import HelpModal from './Help.vue'
 import Stats from './Stats.vue'
+import { StatsData } from './types'
+import { defineComponent } from "vue";
+import { AxiosResponse } from "axios";
 
-export default {
+interface Vehicle {
+  id: number;
+  position: L.LatLng;
+  visible: boolean;
+  tooltip: string;
+  status: number;
+}
+
+export default defineComponent({
   name: "App",
   components: {
     'l-map': LMap,
@@ -141,36 +152,36 @@ export default {
   },  
   data: function () {
     return {
-      map: null,
+      map: null as any,
       zoom: 13,
-      center: [0, 0],
-      bounds: null,
+      center: [0, 0] as L.LatLngExpression,
+      bounds: null as any,
       osmUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       zone: '60',
-      availableNetworks: [],
+      availableNetworks: [] as string[],
       // Layers
-      boundariesGJ: null,
-      escapePointsGJ: null,
-      affectationsGJ: null,
-      destinationsGJ: null,
-      isochroneGJ: null,
-      toNjoisGJ: null,
-      fromNjoisGJ: null,
-      originCoords: null,
+      boundariesGJ: null as any,
+      escapePointsGJ: null as any,
+      affectationsGJ: null as any,
+      destinationsGJ: null as any,
+      isochroneGJ: null as any,
+      toNjoisGJ: null as any,
+      fromNjoisGJ: null as any,
+      originCoords: null as any,
 
       mins: 5,
       secs: 0,
       nb_random_vehicles: 10,
       vid: 1,
-      vehicles: [],
+      vehicles: [] as Vehicle[],
       carAssignableIcon: myIcons["carAssignable"],
       carAssignedIcon: myIcons["carAssigned"],
       carUnassignedIcon: myIcons["carUnassigned"],
       originIcon: myIcons["origin"],
       loading: false,
       results: false,
-      stats_model:null,
-      outputsContent: null,
+      stats_model: null as StatsData | null,
+      outputsContent: "" as string,
       showHelp: false,
 
       isochroneStyle: {
@@ -178,44 +189,44 @@ export default {
         color: "#fe7000",
         fillColor: "#00fe7e",
         fillOpacity: 0.2,
-      },
-      fromNjoisStyle: function(feature) {
+      } as any,
+      fromNjoisStyle: function(feature: any) {
         return {
           weight: 4,
           color: feature.properties.watched?"#fe3400":"#00ff00",
           opacity: 0.9,
           zIndex: -10
         }
-      },
+      } as any,
       toNjoisStyle: {
         weight: 4,
         color: "#fcff00",
         opacity: 1,
-      },
+      } as any,
       boundaryStyle: {
         weight: 2,
         color: "#000000",
         opacity: 1,
         fillOpacity: 0,
-      }
+      } as any
     };
   },
 
   computed: {
-    escapeOptions() {
+    escapeOptions(): any {
       return {
-        pointToLayer: function (feature, latlng) {
+        pointToLayer: function (feature: any, latlng: L.LatLng) {
           return L.marker(latlng, {icon: myIcons["endpoint"]});
         }
       }
     },
-    destinationsOptions() {
+    destinationsOptions(): any {
       return {
         onEachFeature: this.onEachDestinationFeatureFunction
       };
     },
-    onEachDestinationFeatureFunction() {
-      return (feature, layer) => {
+    onEachDestinationFeatureFunction(): (feature: any, layer: L.Layer) => void {
+      return (feature: any, layer: any) => {
         layer.setIcon(myIcons["barrage"])
         layer.bindTooltip(this.$t('app.tooltips.destination', { id: feature.properties.vid }),
           { permanent: false, 
@@ -224,7 +235,7 @@ export default {
       };
     },
 
-    affectationsOptions() {
+    affectationsOptions(): any {
       return {
         weight: 3,
         dashArray: "2 5",
@@ -243,15 +254,15 @@ export default {
         onEachFeature: this.onEachAffectationFeatureFunction,
       };
     },
-    onEachAffectationFeatureFunction() {
-      return (feature, layer) => {
-        layer.on('mouseover', function (e) {
+    onEachAffectationFeatureFunction(): (feature: any, layer: L.Layer) => void {
+      return (feature: any, layer: any) => {
+        layer.on('mouseover', function (e: any) {
           e.target.setStyle({
               color: "#ff00ff",
               weight: 5
           });
         });
-        layer.on('mouseout', function (e) {
+        layer.on('mouseout', function (e: any) {
           e.target.setStyle({
               color: "#0000ff",
               weight: 3
@@ -269,8 +280,8 @@ export default {
         );
       };
     },
-    currentLocale() {
-      return this.$i18n.locale.toUpperCase();
+    currentLocale(): string {
+      return this.$i18n.locale.toString().toUpperCase();
     }
   },
 
@@ -288,14 +299,14 @@ export default {
 
   methods: {
     fetchNetworks: function() {
-      this.$axios
-        .get('networks').then((response) => {
+      (this as any).$axios
+        .get('networks').then((response: AxiosResponse) => {
           if (response.status === 200) {
             this.availableNetworks = response.data.available;
             this.zone = response.data.current;
             this.onZoneChange(true);
           }
-        }).catch((error) => {
+        }).catch((error: any) => {
           console.error('Error fetching networks:', error);
           // Fallback to default zone if API fails
           this.availableNetworks = ['60'];
@@ -314,7 +325,7 @@ export default {
             : this.$axios.post(`networks/${this.zone}`);
 
         request
-          .then((response) => {
+          .then((response: AxiosResponse) => {
             if (response.status === 200) {
               const data = response.data;
               this.boundariesGJ = data["boundaries"];
@@ -327,7 +338,7 @@ export default {
               this.originCoords = data["origin_coords"];
             }
           })
-          .catch((error) => {
+          .catch((error: any) => {
             console.error('Error loading zone:', error);
           });
     },
@@ -336,7 +347,7 @@ export default {
         alert(this.$t('app.error.noVehicles'));
         return
       }
-      this.$axios
+      (this as any).$axios
         .post(`generate`, {
           vehicles: this.vehicles.map(v => ({
             id: v.id,
@@ -345,7 +356,7 @@ export default {
           origin_coords: { lat: this.originCoords.lat, lng: this.originCoords.lng },
           time_delta: this.mins*60 + this.secs
         })
-        .then((response) => {
+        .then((response: AxiosResponse) => {
           if (response.status === 200) {
             this.results = true
             this.originCoords = L.latLng(response.data["origin"])
@@ -369,14 +380,14 @@ export default {
     setLoading() {
       this.loading = true;
     },
-    setDone(eventMessage) {
+    setDone(eventMessage: string | undefined) {
       if (eventMessage) {
         this.outputsContent = eventMessage
       }
       this.loading = false;
     },
 
-    addVehicle: function (e) {
+    addVehicle: function (e: L.LeafletMouseEvent) {
       if (!this.results && !this.loading) {
         this.vehicles.push({
           id: this.vid,
@@ -389,18 +400,18 @@ export default {
       }
     },
 
-    removeVehicle: function(v) {
+    removeVehicle: function(v: Vehicle) {
       const index = this.vehicles.indexOf(v);
       if (!this.results && !this.loading && index > -1) {
         this.vehicles.splice(index, 1);
       }
     },
 
-    addToVehicles: function(vehicles_json) {
+    addToVehicles: function(vehicles_json: any[]) {
       for(var i = 0; i < vehicles_json.length; i++) {
         this.vehicles.push(
           { id: vehicles_json[i].id,
-            position: vehicles_json[i].position,
+            position: L.latLng(vehicles_json[i].position),
             visible: true,
             tooltip: this.$t('app.tooltips.vid', { id: vehicles_json[i].id }),
             status: vehicles_json[i].status
@@ -410,7 +421,7 @@ export default {
 
     switchLanguage() {
       const newLocale = this.$i18n.locale === 'fr' ? 'en' : 'fr';
-      this.$i18n.locale = newLocale;
+      (this as any).$i18n.locale = newLocale;
       localStorage.setItem('user-locale', newLocale);
     },
 
@@ -436,17 +447,17 @@ export default {
     },
 
     getRandomVehicles: function () {
-      let params = {nb_vh: this.nb_random_vehicles}
-      this.$axios
+      let params = {nb_vh: this.nb_random_vehicles};
+      (this as any).$axios
         .get(`random_vehicles`, {params: params})
-        .then((response) => {
+        .then((response: AxiosResponse) => {
           if (response.status === 200) {
             this.addToVehicles(response.data)
           }
         });
     },
   },
-};
+});
 </script>
 
 <style>
