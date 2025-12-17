@@ -32,7 +32,7 @@ resource "google_cloud_run_service" "backend" {
     }
     spec {
       containers {
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository_name}/backend:latest"
+        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository_name}/backend:${var.image_tag}"
         
         env {
           name  = "NEO_GRAPH_NAME"
@@ -78,7 +78,7 @@ resource "google_cloud_run_service" "frontend" {
     }
     spec {
       containers {
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository_name}/frontend:latest"
+        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository_name}/frontend:${var.image_tag}"
         
         env {
           name  = "BACKEND_URL"
