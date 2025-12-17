@@ -94,4 +94,4 @@ def test_get_departements_gdf(extracted_departements):
 
     # Point get_departments_gdf to use the extracted test files
     gdf = get_departments_gdf(dir=str(extracted_departements))
-    assert len(gdf) == 5
+    assert len(gdf) == 109
