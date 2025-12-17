@@ -1,4 +1,4 @@
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY pyproject.toml .
 # Install dependencies with uv
 RUN uv pip install --system -r pyproject.toml
 
-FROM python:3.12-slim as final
+FROM python:3.12-slim AS final
 
 ENV PYTHONPATH=/app
 
