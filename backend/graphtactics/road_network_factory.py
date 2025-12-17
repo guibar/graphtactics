@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 import os
@@ -38,9 +37,10 @@ osmnx.settings.log_level = logging.INFO
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 network_dir: str = os.path.join(data_dir, "networks")
-departments_shp_zipped_url = "https://www.data.gouv.fr/en/datasets/r/eb36371a-761d-44a8-93ec-3d728bec17ce"
+# departments_shp_zipped_url = "https://www.data.gouv.fr/en/datasets/r/eb36371a-761d-44a8-93ec-3d728bec17ce"
+departments_shp_zipped_url = "https://data-interne.ademe.fr/data-fair/api/v1/datasets/geo-contours-departements/data-files/GEO_Contours_Departements.zip"
 departments_data_dir = os.path.join(data_dir, "departements")
-departments_file_name = "departements-20180101.shp"
+departments_file_name = "Departements.shp"
 
 
 def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = 2000) -> Polygon:
@@ -131,7 +131,7 @@ def get_departement_polygon(departement_code: str, include_neighbours: bool) -> 
 
     departments_gdf = get_departments_gdf()
     try:
-        shape: BaseGeometry = departments_gdf[departments_gdf["code_insee"] == departement_code].iloc[0]["geometry"]
+        shape: BaseGeometry = departments_gdf[departments_gdf["DDEP_C_COD"] == departement_code].iloc[0]["geometry"]
     except KeyError:
         raise Exception(f"No geometry is associated with {departement_code}")
 
@@ -240,16 +240,14 @@ def get_departments_gdf(dir: str = departments_data_dir) -> GeoDataFrame:
         FileNotFoundError: If the shapefile cannot be found in the downloaded archive.
         Exception: For any issues encountered during file download or extraction.
     """
-
-    if not os.path.exists(departments_file_name):
-        logger.info(f"File {departments_file_name} not cached, downloading it  ...")
+    shp_file_path = os.path.join(departments_data_dir, departments_file_name)
+    if not os.path.exists(shp_file_path):
+        logger.info(f"File {shp_file_path} not cached, downloading it from {departments_shp_zipped_url} ...")
 
         extract_zip_url(departments_shp_zipped_url, departments_data_dir)
-        shp_file_path = os.path.join(departments_data_dir, departments_file_name)
         if not os.path.exists(shp_file_path):
             raise FileNotFoundError(f"Shapefile not found after extraction: {shp_file_path}")
     else:
-        shp_file_path = os.path.join(departments_data_dir, departments_file_name)
         logger.info(f"Loading {shp_file_path} from cache")
     return read_file(shp_file_path)
 
@@ -274,8 +272,8 @@ class RoadNetworkFactory:
     def __init__(
         self,
         bbox_file: str = os.path.join(data_dir, "boxes.json"),
-        github_repo: str = "NEOTac/backend",
-        github_release_tag: str = "latest",
+        github_repo: str = "guibar/graphtactics",
+        github_release_tag: str = "osm-networks-v1.0",
     ):
         self.cache_dir = network_dir
         self.bbox_file = bbox_file
@@ -416,11 +414,11 @@ class RoadNetworkFactory:
         gpkg_url = f"{base_url}/{self.name}.gpkg"
 
         try:
-            logger.info(f"Attempting to download {self.name}.graphml from GitHub releases")
+            logger.info(f"Attempting to download graphml from {graphml_url}")
             urlretrieve(graphml_url, self.graphml_path)
-            logger.info(f"Attempting to download {self.name}.gpkg from GitHub releases")
+            logger.info(f"Attempting to download gpkg from {gpkg_url}")
             urlretrieve(gpkg_url, self.gpkg_path)
-            logger.info(f"Successfully downloaded network files for '{self.name}' from GitHub")
+            logger.info(f"Successfully downloaded graphml and gpkg for '{self.name}' from GitHub")
             return True
         except HTTPError as e:
             logger.debug(f"GitHub release files not found for '{self.name}': {e}")
@@ -507,29 +505,3 @@ class RoadNetworkFactory:
         osmnx.save_graphml(graph, self.graphml_path, gephi=False, encoding="utf-8")
 
         logger.info(f"Files {self.graphml_path} and {self.gpkg_path} have been successfully generated.")
-
-
-def main():
-    """
-    Entry point for command-line usage of osm_graph_factory.py.
-
-    Usage:
-        copy: Copy all network files to S3.
-        prepare $zone: Generate network files for a zone.
-        prepare s3 $zone: Generate network files for a zone and use S3 for file retrieval/storage.
-    """
-    parser = argparse.ArgumentParser(description="OSM Graph Factory CLI")
-    parser.add_argument("command", choices=["copy", "prepare"], help="Action to perform")
-    parser.add_argument("zone", nargs="?", help="Geographic zone name")
-    parser.add_argument("--s3", action="store_true", help="Use S3 for file retrieval/storage")
-
-    # args = parser.parse_args()
-
-    # if args.command == "prepare":
-    #     if args.zone is None:
-    #         parser.error("prepare requires a zone argument")
-    #     prepare_network_files(args.zone)
-
-
-if __name__ == "__main__":
-    main()
