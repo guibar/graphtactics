@@ -18,7 +18,7 @@ load_dotenv()
 
 # Configuration - modify these variables
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-REPO_NAME = "NEOTac/backend"
+REPO_NAME = "guibar/graphtactics"
 RELEASE_TAG = "osm-networks-v1.0"
 RELEASE_NAME = "Network Files v1.0."
 RELEASE_DESCRIPTION = "Pre-generated network files some areas"
