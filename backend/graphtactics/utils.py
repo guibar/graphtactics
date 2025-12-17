@@ -3,6 +3,7 @@ import logging
 import os
 from collections import OrderedDict
 from math import atan2
+from pathlib import Path
 from typing import cast
 
 import pandas
@@ -13,8 +14,8 @@ from osmnx._overpass import _make_overpass_polygon_coord_strs
 from osmnx._overpass import _overpass_request as overpass_request
 from shapely.geometry import Point, Polygon
 
-data_dir = "data"
-plans_dir = os.path.join(data_dir, "plans")
+data_dir = Path(__file__).resolve().parent.parent / "data"
+plans_dir = data_dir / "plans"
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def convert_here_json_isochrone_to_gpkg(here_isochrone_json_file) -> None:
         return tuple(map(float, coords_as_str.split(",")))[::-1]
 
     polygon = Polygon(list(map(convert_coords, coords_lat_lng_str)))
-    isochrone_as_gdf: GeoDataFrame = GeoDataFrame(index=[0], crs="EPSG:4326", geometry=[polygon])
+    isochrone_as_gdf: GeoDataFrame = GeoDataFrame(geometry=[polygon], crs="EPSG:4326")
     isochrone_as_gdf.to_file(gpkg_filepath, driver="GPKG")
 
 

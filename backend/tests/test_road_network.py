@@ -18,10 +18,6 @@ def road_network_60() -> RoadNetwork:
     return factory.create("60")
 
 
-def test_path():
-    assert "data/networks" == network_dir
-
-
 def test_highway_value_to_int():
     assert highway_value_to_int(["residential", "unclassified"]) == 1  # residential > unclassified
     assert highway_value_to_int(["tertiary_link", "residential"]) == 2  # tertiary > residential
