@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import sys
 from io import BytesIO
 from typing import cast
 from urllib.error import HTTPError
@@ -32,12 +33,14 @@ from .utils import (
     stringify_nonnumeric_cols,
 )
 
-osmnx.settings.cache_folder = "cache/osmnx"
 osmnx.settings.log_console = True
-osmnx.settings.log_level = logging.INFO
+osmnx.settings.log_level = logging.WARNING
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 network_dir: str = os.path.join(data_dir, "networks")
+osmnx.settings.cache_folder = os.path.join(data_dir, "osmnx_cache")
+osmnx.settings.use_cache = True
+
 # departments_shp_zipped_url = "https://www.data.gouv.fr/en/datasets/r/eb36371a-761d-44a8-93ec-3d728bec17ce"
 departments_shp_zipped_url = "https://data-interne.ademe.fr/data-fair/api/v1/datasets/geo-contours-departements/data-files/GEO_Contours_Departements.zip"
 departments_data_dir = os.path.join(data_dir, "departements")
@@ -195,8 +198,17 @@ def analyze_boundary(
 
     # Compute intersection points of these edges with the polygon boundary
     intersection_points: GeoSeries = x_edges.intersection(polygon.exterior)
+
+    # Drop from intersection_points anything that is not a Point or a MultiPoint, I have seen None values
+    intersection_points = cast(
+        GeoSeries, intersection_points[intersection_points.geom_type.isin(["Point", "MultiPoint"])]
+    )
+
     # Replace MultiPoint geometries by the first point in the collection for consistency
-    intersection_points = GeoSeries(intersection_points.apply(lambda g: g[0] if g.geom_type == "MultiPoint" else g))
+    intersection_points = GeoSeries(
+        intersection_points.apply(lambda g: g.geoms[0] if g.geom_type == "MultiPoint" else g)
+    )
+
     # Convert GeoSeries to GeoDataFrame to match return type
     intersection_points_gdf = GeoDataFrame(geometry=intersection_points, crs="EPSG:4326")
     return x_edges, intersection_points_gdf, nodes_in_polygon
@@ -277,11 +289,12 @@ class RoadNetworkFactory:
         bbox_file: str = os.path.join(data_dir, "boxes.json"),
         github_repo: str = "guibar/graphtactics",
         github_release_tag: str = "osm-networks-v1.0",
+        cache_dir: str = os.path.join(data_dir, "networks"),
     ):
-        self.cache_dir = network_dir
         self.bbox_file = bbox_file
         self.github_repo = github_repo
         self.github_release_tag = github_release_tag
+        self.cache_dir = cache_dir
 
         # Ensure cache directory exists
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -327,7 +340,7 @@ class RoadNetworkFactory:
             raise ValueError(f"Invalid north/south values for '{self.name}")
         return True
 
-    def create(self, name: str) -> RoadNetwork:
+    def create(self, name: str, create_from_scratch: bool = False) -> RoadNetwork:
         """Create a RoadNetwork instance for the given name.
 
         Attempts to load or generate the network through multiple strategies:
@@ -358,6 +371,12 @@ class RoadNetworkFactory:
                 f"or a named bbox from {self.bbox_file} with valid coordinates."
             )
 
+        if create_from_scratch:
+            boundary: Polygon = boundary_from_name(self.name)
+            self.create_files_from_boundary(boundary)
+            return self.instantiate_from_files()
+
+        # else we try to load from cache or download from GitHub releases
         # 1. Check cache
         if os.path.isfile(self.graphml_path) and os.path.isfile(self.gpkg_path):
             return self.instantiate_from_files()
@@ -367,9 +386,6 @@ class RoadNetworkFactory:
         # 3. We recreate from boundaries, the early check ensures this should work
         else:
             raise ValueError(f"Network files for '{self.name}' not found in cache or GitHub releases. ")
-            # boundary: Polygon = boundary_from_name(self.name)
-            # self.create_files_from_boundary(boundary)
-            # return self.instantiate_from_files()
 
     def instantiate_from_files(self) -> RoadNetwork:
         """Load network from files. Assumes files are present.
@@ -443,9 +459,8 @@ class RoadNetworkFactory:
             name (str): Name of the geographic zone (department code, box name, etc.).
         """
 
-        osmnx.settings.cache_folder = "cache/osmnx"
         boundary_buff = get_buffered_poly(boundary)
-        logger.info(f"Downloading OSM data within the polygon defined by {boundary}.")
+        logger.info(f"Downloading OSM data within the polygon defined by {boundary.bounds}.")
         # custom filter to get only major highways suitable for motor vehicles
         major_highways = (
             '["highway"~"tertiary|tertiary_link|secondary|secondary_link|primary|primary_link|'
@@ -510,3 +525,12 @@ class RoadNetworkFactory:
         osmnx.save_graphml(graph, self.graphml_path, gephi=False, encoding="utf-8")
 
         logger.info(f"Files {self.graphml_path} and {self.gpkg_path} have been successfully generated.")
+
+
+def main():
+    factory: RoadNetworkFactory = RoadNetworkFactory(cache_dir="networks.tmp")
+    factory.create(sys.argv[1], create_from_scratch=True)
+
+
+if __name__ == "__main__":
+    main()

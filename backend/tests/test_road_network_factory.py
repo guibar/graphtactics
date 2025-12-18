@@ -272,3 +272,27 @@ class TestCreate:
         assert len(network.nodes_df) == 7123
         assert network.edges_df is not None
         assert len(network.edges_df) == 14356
+
+    def test_create_network_from_scratch(self, tmp_path):
+        """Test creating files from boundary (integration test)."""
+        # Create factory with default GitHub settings
+        # Use tmp_path as cache_dir to avoid polluting actual cache
+
+        factory = RoadNetworkFactory(cache_dir=tmp_path)
+        # name: str = "st_quentin"
+        # factory.create(name, create_from_scratch=True)
+
+        # # Assert: Files were created successfully
+        # graphml_path = tmp_path / f"{name}.graphml"
+        # gpkg_path = tmp_path / f"{name}.gpkg"
+        # assert graphml_path.exists()
+        # assert gpkg_path.exists()
+
+        name = "90"
+        factory.create(name, create_from_scratch=True)
+
+        # Assert: Files were created successfully
+        graphml_path = tmp_path / f"{name}.graphml"
+        gpkg_path = tmp_path / f"{name}.gpkg"
+        assert graphml_path.exists()
+        assert gpkg_path.exists()
