@@ -14,8 +14,8 @@ jobs:
       id: cache-networks
       uses: actions/cache/restore@v4
       with:
-        path: data/networks
-        key: network-data-${{ runner.os }}-${{ hashFiles('data/networks/*.graphml', 'data/networks/*.gpkg') }}
+        path: backend/data/networks
+        key: network-data-${{ runner.os }}-${{ hashFiles('backend/data/networks/*.graphml', 'backend/data/networks/*.gpkg') }}
         restore-keys: |
           network-data-${{ runner.os }}-
       env:
@@ -24,7 +24,7 @@ jobs:
       uses: astral-sh/setup-uv@v4
       with:
         enable-cache: true
-        cache-dependency-glob: "pyproject.toml"
+        cache-dependency-glob: "backend/pyproject.toml"
     - name: Setup python environment
       uses: actions/setup-python@v5
       with:
@@ -42,7 +42,7 @@ jobs:
       if: always()
       uses: actions/cache/save@v4
       with:
-        path: data/networks
+        path: backend/data/networks
         key: ${{ steps.cache-networks.outputs.cache-primary-key }}
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
