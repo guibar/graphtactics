@@ -21,7 +21,6 @@ build
 dist
 /**/.pytest_cache/
 
-
 # Project notes and todos
 notes.md
 todo.md
@@ -38,6 +37,7 @@ todo.md
 /backend/**/.pytest_cache/
 /backend/.ruff_cache/
 /backend/tests/data/
+/backend/data/osmnx_cache/
 
 /backend/data/networks/*
 !/backend/data/networks/.gitkeep
