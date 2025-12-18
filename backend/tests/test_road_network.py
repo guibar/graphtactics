@@ -2,7 +2,7 @@ import pytest
 from shapely import Point
 
 from graphtactics.road_network import EdgeRef, RoadNetwork
-from graphtactics.road_network_factory import RoadNetworkFactory, network_dir
+from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.utils import highway_value_to_int
 
 
