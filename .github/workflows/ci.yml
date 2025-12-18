@@ -1,12 +1,13 @@
-name: Neotac Interceptor CI
+name: Graphtactics CI
 
 on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: backend
     steps:
     - uses: actions/checkout@v4
     - name: Restore network data cache
