@@ -5,8 +5,9 @@ from ortools.sat.python import cp_model
 from ortools.sat.python.cp_model import IntVar
 from pandas import Index
 
-from .adversary import CandidateNodes
+from .adversary import CandidateNodes, TravelData
 from .road_network import RoadNetwork
+from .scenario import Scenario
 from .vehicle import Vehicle, VehicleAssignment, VehicleStatus
 
 MAX_TIME_TO_SOLVE = 30
@@ -15,13 +16,24 @@ logger = logging.getLogger(__name__)
 
 
 class Planner:
-    def __init__(self, network: RoadNetwork, vehicles: dict[int, Vehicle], candidate_nodes: CandidateNodes):
+    def __init__(self, network: RoadNetwork, scenario: Scenario):
         self.network = network
-        self.vehicles: dict[int, Vehicle] = vehicles
-        self.assignable_vids: list[int] = [
-            v_id for v_id in self.vehicles if self.vehicles[v_id].status == VehicleStatus.ASSIGNABLE
-        ]
-        self.candidate_nodes: CandidateNodes = candidate_nodes
+        self.vehicles: dict[int, Vehicle] = scenario.vehicles
+        self.assignable_vids: list[int] = []  # maps an int from 0 to (number of assignable -1) vehicles to vid
+        self.travel_data: TravelData = TravelData(self.network, scenario.adversary, scenario.time_elapsed)
+        self.candidate_nodes = CandidateNodes(self.travel_data)
+
+        for vehicle in self.vehicles.values():
+            # Don't bother calculating travel times for vehicles that are too close to the action
+            if self.travel_data.times_to_nodes[vehicle.position.u] <= 0:
+                logger.debug(
+                    f"Vehicle {vehicle.id} will not be assigned to the plan because the adversary has passed it."
+                )
+                vehicle.status = VehicleStatus.TOO_CLOSE_TO_LKP
+            else:
+                vehicle.set_travel_times()
+                if vehicle.status == VehicleStatus.ASSIGNABLE:
+                    self.assignable_vids.append(vehicle.id)
 
     def plan_interception(self, time_margin: int = 0) -> "Plan":
         """
@@ -31,19 +43,21 @@ class Planner:
         in order to maximize the total interception score. It updates the status and
         assignment of each vehicle.
         """
+        # No vehicles, so no solution to find and nothing more to do
+        if len(self.assignable_vids) == 0:
+            return Plan(len(self.assignable_vids))
 
         scores_n: list[int] = list(self.candidate_nodes.node_scores.values())
         adv_paths_to_n: list[list[int]] = self.candidate_nodes.paths_as_indices
         adv_times_to_n: list[int] = list(self.candidate_nodes.times_to_nodes.values())
-        times_v_n: list[list[int]] = Vehicle.get_time_matrix(self.vehicles, self.candidate_nodes.get_candidate_nodes())
+        times_v_n: list[list[int]] = Vehicle.get_time_matrix(
+            {i: self.vehicles[i] for i in self.assignable_vids},
+            self.candidate_nodes.get_candidate_nodes(),
+        )
         num_vehicles: int = len(times_v_n)
         num_nodes: int = len(times_v_n[0])
 
         plan: Plan = Plan(len(self.assignable_vids))
-
-        # No vehicles, so no solution to find and nothing more to do
-        if len(self.assignable_vids) == 0:
-            return plan
 
         # The model
         model = cp_model.CpModel()
@@ -144,14 +158,14 @@ class Plan:
             "nb_vehicles": self.nb_assignable_vehicles,
             "nb_assignments": len(self.assignments),
             "time_margin_stats": (
-                min(time_margins),
-                int(sum(time_margins) / len(self.assignments)),
-                max(time_margins),
+                min(time_margins) if time_margins else 0,
+                int(sum(time_margins) / len(self.assignments)) if time_margins else 0,
+                max(time_margins) if time_margins else 0,
             ),
             "time_to_dest_stats": (
-                min(times_to_dest),
-                int(sum(times_to_dest) / len(self.assignments)),
-                max(times_to_dest),
+                min(times_to_dest) if times_to_dest else 0,
+                int(sum(times_to_dest) / len(self.assignments)) if times_to_dest else 0,
+                max(times_to_dest) if times_to_dest else 0,
             ),
         }
 

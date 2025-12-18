@@ -32,7 +32,7 @@ def test_dispositif_10_vehicles(road_network_60):
     )
     serializer = Serializer(road_network_60, scenario, None, "60_10v.gpkg")
     serializer.save()
-    planner = Planner(road_network_60, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "stats" in payload
@@ -50,7 +50,7 @@ def test_dispositif_50_vehicles(road_network_60):
     )
     serializer = Serializer(road_network_60, scenario, None, "60_50v.gpkg")
     serializer.save()
-    planner = Planner(road_network_60, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "stats" in payload
@@ -68,7 +68,7 @@ def test_dispositif_100_vehicles(road_network_60):
     )
     serializer = Serializer(road_network_60, scenario, None, "60_100v.gpkg")
     serializer.save()
-    planner = Planner(road_network_60, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "stats" in payload

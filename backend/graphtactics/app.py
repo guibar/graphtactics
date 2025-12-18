@@ -150,7 +150,7 @@ async def generate_plan(scenario_dto: ScenarioDTO):
         scenario = scenario_dto.to_domain(app.state.network)
 
         # Generate plan
-        planner = Planner(app.state.network, scenario.vehicles, scenario.adversary.candidate_nodes)
+        planner = Planner(app.state.network, scenario)
         plan = planner.plan_interception()
 
         # Save plan if enabled

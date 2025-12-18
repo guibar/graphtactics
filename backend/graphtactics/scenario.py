@@ -6,7 +6,7 @@ from shapely.geometry import Point
 
 from .adversary import Adversary
 from .road_network import RoadNetwork
-from .vehicle import Vehicle, VehicleStatus
+from .vehicle import Vehicle
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +47,6 @@ class Scenario:
         self.time_now: datetime = last_time_seen + time_elapsed
         self.adversary: Adversary = Adversary(network, lk_point, last_time_seen, time_elapsed)
         self.vehicles: dict[int, Vehicle] = vehicles
-
-        for vehicle in self.vehicles.values():
-            # Don't bother calculating travel times for vehicles that are too close to the action
-            if self.adversary.has_passed(vehicle.position.u):
-                logger.debug(
-                    f"Vehicle {vehicle.id} will not be assigned to the plan because the adversary has passed it."
-                )
-                vehicle.status = VehicleStatus.TOO_CLOSE_TO_LKP
-            else:
-                vehicle.set_travel_times()
 
 
 class TooLateForThisPathException(Exception):

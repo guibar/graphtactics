@@ -44,25 +44,20 @@ class Vehicle:
         )
 
     def set_travel_times(self) -> None:
-        if self.status == VehicleStatus.ASSIGNABLE:
-            self.times_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from(self.position.u)
-
-            if len(self.times_to_nodes) < len(self.network.graph) * MIN_REACHABLE_NODES_RATIO_FOR_ASSIGNABLE:
-                # If the vehicle can reach less than 50% of the network, it is not assigned to the plan
-                # Should document why this can happen
-                logger.debug(
-                    f"Vehicle {self.id} seems to have reduced access to the network and "
-                    + "its status is set to CANNOT_REACH_GRAPH"
-                )
-                self.status = VehicleStatus.CANNOT_REACH_GRAPH
+        self.times_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from(self.position.u)
+        self.status = VehicleStatus.ASSIGNABLE
+        if len(self.times_to_nodes) < len(self.network.graph) * MIN_REACHABLE_NODES_RATIO_FOR_ASSIGNABLE:
+            # If the vehicle can reach less than 50% of the network, it is not assigned to the plan
+            # Should document why this can happen
+            logger.debug(
+                f"Vehicle {self.id} seems to have reduced access to the network and "
+                + "its status is set to CANNOT_REACH_GRAPH"
+            )
+            self.status = VehicleStatus.CANNOT_REACH_GRAPH
 
     @classmethod
     def get_time_matrix(cls, vehicles: dict[int, "Vehicle"], candidate_nodes: list[int]) -> list[list[int]]:
-        return [
-            [int(vehicle.times_to_nodes[node]) for node in candidate_nodes]
-            for vehicle in vehicles.values()
-            if vehicle.status == VehicleStatus.ASSIGNABLE
-        ]
+        return [[int(vehicle.times_to_nodes[node]) for node in candidate_nodes] for vehicle in vehicles.values()]
 
     @classmethod
     def get_random_vehicles(

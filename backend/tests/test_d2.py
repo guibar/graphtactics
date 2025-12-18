@@ -29,7 +29,7 @@ def test_run_d2_1(road_network_d2):
     )
     repo = Serializer(road_network_d2, scenario, filepath="d2_123")
     repo.save()
-    planner = Planner(road_network_d2, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_d2, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "affectations" in payload
@@ -47,7 +47,7 @@ def test_run_d2_2(road_network_d2):
     )
     repo = Serializer(road_network_d2, scenario, filepath="d2_234")
     repo.save()
-    planner = Planner(road_network_d2, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_d2, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "affectations" in payload
@@ -71,7 +71,7 @@ def test_run_d2_3(road_network_d2):
     )
     repo = Serializer(road_network_d2, scenario, filepath="d2_234")
     repo.save()
-    planner = Planner(road_network_d2, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_d2, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "affectations" in payload
@@ -79,7 +79,7 @@ def test_run_d2_3(road_network_d2):
 
 def test_from_gpkg(road_network_d2):
     scenario = Serializer.load_scenario(road_network_d2, "d2_123")
-    planner = Planner(road_network_d2, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_d2, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "affectations" in payload

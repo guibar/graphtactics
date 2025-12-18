@@ -18,11 +18,6 @@ class Adversary:
         self.travel_data: TravelData = TravelData(self.network, self, time_elapsed)
         self.candidate_nodes = CandidateNodes(self.travel_data)
 
-    def has_passed(self, node: int) -> bool:
-        if node in self.travel_data.times_to_nodes:
-            return self.travel_data.times_to_nodes[node] <= 0
-        return False
-
     def get_stats(self) -> dict[str, int]:
         return {
             "nb_escape_nodes": len(self.travel_data.escape_nodes),
@@ -66,10 +61,14 @@ class TravelData:
         # For each Escape Node (en)
         for e_n in self.escape_nodes:
             full_path_to_e_n = self.paths_to_nodes[e_n]
-            # If the point just before the Escape Node is not in the inner zone, we ignore this Escape Node.
-            # Otherwise, we might have Escape Nodes reached by Shortest Paths passing through
-            # another Escape Node first.
-            if self.network.is_inner(full_path_to_e_n[-2]):
+            # find first escape node in the path
+            first_escape_node = None
+            for node in full_path_to_e_n:
+                if node in self.escape_nodes:
+                    first_escape_node = node
+                    break
+            # only deals with this path if e_n is the first escape node in the path
+            if first_escape_node == e_n:
                 times_along_path: list[int] = [self.times_to_nodes[node] for node in full_path_to_e_n]
 
                 # find in the index of the first node the adversary has not yet reached

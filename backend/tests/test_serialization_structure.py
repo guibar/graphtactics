@@ -27,7 +27,7 @@ def test_plan_response_geojson_structure(road_network_60):
     )
 
     # Generate plan
-    planner = Planner(road_network_60, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
 
     # Serialize

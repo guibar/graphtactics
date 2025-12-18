@@ -29,7 +29,7 @@ def test_oise_complet_a(road_network_60):
     )
     serializer = Serializer(road_network_60, scenario, None, "60_345a")
     serializer.save()
-    planner = Planner(road_network_60, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     PlanResponse.from_domain(scenario, plan)
 
@@ -46,7 +46,7 @@ def test_oise_complet_b(road_network_60):
     )
     serializer = Serializer(road_network_60, scenario, None, "60_345b")
     serializer.save()
-    planner = Planner(road_network_60, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     PlanResponse.from_domain(scenario, plan)
 
@@ -66,6 +66,6 @@ def test_new_dispo(road_network_60):
     serializer = Serializer(network, scenario, None, "new_dispo_60")
     serializer.save()
     assert len(scenario.adversary.travel_data.get_njois()) == 6
-    planner = Planner(network, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     PlanResponse.from_domain(scenario, plan)

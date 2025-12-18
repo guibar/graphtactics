@@ -27,7 +27,7 @@ def test_route(road_network_60c):
     )
     serializer = Serializer(road_network_60c, scenario, None, "60c_345")
     serializer.save()
-    planner = Planner(road_network_60c, scenario.vehicles, scenario.adversary.candidate_nodes)
+    planner = Planner(road_network_60c, scenario)
     plan = planner.plan_interception()
     payload = PlanResponse.from_domain(scenario, plan).model_dump()
     assert "origin" in payload
