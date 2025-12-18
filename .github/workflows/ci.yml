@@ -37,7 +37,7 @@ jobs:
       run: uv run ruff check .
     - name: Test with pytest
       run: |
-        python -m pytest --cov-report html --cov interceptor -vvv
+        python -m pytest --cov-report html --cov graphtactics -vvv
     - name: Save network data cache
       if: always()
       uses: actions/cache/save@v4
