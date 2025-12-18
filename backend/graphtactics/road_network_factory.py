@@ -19,6 +19,7 @@ from osmnx import (
     projection,
 )
 from pandas import Series
+from pandas.core.base import IndexLabel
 from shapely import MultiPolygon
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
@@ -138,7 +139,9 @@ def get_departement_polygon(departement_code: str, include_neighbours: bool) -> 
     if include_neighbours:
         logger.info(f"Adding departements neighbours of {departement_code}")
         # get 'not disjoint' countries, make a copy() to avoid the annoying SettingWithCopyWarning
-        departements_around: GeoDataFrame = departments_gdf[~departments_gdf.geometry.disjoint(shape)].copy()
+        departements_around: GeoDataFrame = cast(
+            GeoDataFrame, departments_gdf[~departments_gdf.geometry.disjoint(shape)].copy()
+        )
         logger.info(f"The following departements will be included in the area: {list(departements_around.code_insee)}")
         shape = cast(BaseGeometry, departements_around.union_all())
     # make sure to return a Polygon, not a MultiPolygon
@@ -172,7 +175,7 @@ def analyze_boundary(
     # boolean Series indicating if each node is within the polygon
     is_within_polygon: Series = nodes_df.within(polygon)
     # Set of node IDs that are inside the polygon
-    nodes_in_polygon: set[int] = set(is_within_polygon[is_within_polygon].index)
+    nodes_in_polygon: set[int] = set(cast(Series, is_within_polygon[is_within_polygon]).index)
 
     # Helper to get edge data using highway ranking logic
     def get_edge_data_dict(edge: tuple[int, int]) -> dict:
@@ -459,6 +462,8 @@ class RoadNetworkFactory:
             custom_filter=major_highways,
         )
         logger.info("OSM data downloaded, processing the graph ...")
+        nodes_gdf: GeoDataFrame
+        edges_gdf: GeoDataFrame
         nodes_gdf, edges_gdf = osmnx.graph_to_gdfs(graph)
         out_edges_gdf, out_intersections_gdf, nodes_in_boundary = analyze_boundary(graph, nodes_gdf, boundary)
 
@@ -476,13 +481,13 @@ class RoadNetworkFactory:
         # remove the nodes_to_remove from the graph, nodes_gdf and edges_gdf
         for node in nodes_to_remove:
             graph.remove_node(node)
-        nodes_gdf.drop(nodes_to_remove, inplace=True)
-        # Remove edges where the source node (first level) is in nodes_to_remove
-        edges_to_drop = edges_gdf.index.get_level_values(0).isin(nodes_to_remove)
-        edges_gdf.drop(edges_gdf[edges_to_drop].index, inplace=True)
-        # Remove edges where the target node (second level) is in nodes_to_remove
-        edges_to_drop = edges_gdf.index.get_level_values(1).isin(nodes_to_remove)
-        edges_gdf.drop(edges_gdf[edges_to_drop].index, inplace=True)
+        nodes_gdf = cast(GeoDataFrame, nodes_gdf.drop(nodes_to_remove))
+
+        # Remove edges where either the source (level 0) or target (level 1) node is in nodes_to_remove
+        mask = edges_gdf.index.get_level_values(0).isin(nodes_to_remove) | edges_gdf.index.get_level_values(1).isin(
+            nodes_to_remove
+        )
+        edges_gdf = cast(GeoDataFrame, edges_gdf.drop(cast(IndexLabel, edges_gdf[mask].index)))
 
         # without this, lists cause errors when saving to file
         nodes_gdf = stringify_nonnumeric_cols(nodes_gdf)
