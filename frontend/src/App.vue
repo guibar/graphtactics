@@ -337,8 +337,7 @@ export default defineComponent({
               this.escapePointsGJ = data["escape_points"];
               this.originCoords = data["origin_coords"];
             }
-          })
-          .catch((error: any) => {
+          }).catch((error: any) => {
             console.error('Error loading zone:', error);
           });
     },
@@ -374,6 +373,11 @@ export default defineComponent({
             // Visibility is handled by v-if="...GJ" in the template. 
             // Since we just set the data, they will appear.
           }
+        }).catch((error: any) => {
+          console.error('Error generating plan:', error);
+          // Extract the error message from the backend response
+          const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred';
+          this.setDone(errorMessage);
         });
     },
 
