@@ -13,6 +13,7 @@ from shapely.geometry import Point
 
 from .dtos import PlanResponse, ScenarioDTO, VehicleResponse
 from .planner import Planner
+from .road_network import RoadNetwork
 from .road_network_factory import RoadNetworkFactory
 from .serializer import Serializer
 from .vehicle import Vehicle
@@ -104,7 +105,7 @@ async def get_init_data():
     Returns:
         Dictionary with boundaries, origin coordinates, and escape points
     """
-    network = app.state.network
+    network: RoadNetwork = app.state.network
     d_orig_pt: Point = network.central_point
     boundaries_gdf = GeoDataFrame(
         [{"geometry": network.boundary, "id": "inner"}, {"geometry": network.boundary_buff, "id": "outer"}],
@@ -114,7 +115,7 @@ async def get_init_data():
     return {
         "boundaries": boundaries_gdf.__geo_interface__,
         "origin_coords": {"lat": d_orig_pt.y, "lng": d_orig_pt.x},
-        "escape_points": network.out_intersections_df.__geo_interface__,
+        "escape_points": network.get_node_set_as_gdf(network.get_escape_nodes()).__geo_interface__,
     }
 
 

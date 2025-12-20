@@ -40,7 +40,7 @@ class VehicleDTO(BaseModel):
 
     def to_domain(self, network: RoadNetwork) -> Vehicle:
         """Convert to Vehicle domain object."""
-        return Vehicle.from_point(network, self.id, self.lat_lng.to_domain())
+        return Vehicle.from_point(network, self.id, self.lat_lng.to_domain(), on_node=True)
 
 
 class ScenarioDTO(BaseModel):

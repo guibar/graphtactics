@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from shapely.geometry import Point
 
+from .position import Position
 from .road_network import RoadNetwork
 
 logger = logging.getLogger(__name__)
@@ -11,12 +12,18 @@ logger = logging.getLogger(__name__)
 
 class Adversary:
     def __init__(self, network: RoadNetwork, lk_point: Point, last_time_seen: datetime, time_elapsed: timedelta):
-        self.network = network
-        self.lkp_position = self.network.create_position_from_point(lk_point)
-        self.last_time_seen = last_time_seen
-        self.time_elapsed = time_elapsed
+        self.network: RoadNetwork = network
+        self.lkp_position: Position = self.network.create_position_from_point(lk_point, on_node=True)
+        if not self.network.has_in_boundary(self.lkp_position):
+            raise ValueError(
+                f"(Latitude: {lk_point.y:.3f}, Longitude: {lk_point.x:.3f}) is not a valid position"
+                + " for the last known position of the adversary since it is not within the boundary"
+                + " of the road network."
+            )
+        self.last_time_seen: datetime = last_time_seen
+        self.time_elapsed: timedelta = time_elapsed
         self.travel_data: TravelData = TravelData(self.network, self, time_elapsed)
-        self.candidate_nodes = CandidateNodes(self.travel_data)
+        self.candidate_nodes: CandidateNodes = CandidateNodes(self.travel_data)
 
     def get_stats(self) -> dict[str, int]:
         return {
@@ -45,7 +52,7 @@ class TravelData:
         self.paths_to_e_nodes_future: dict[int, list[int]] = {}
 
         self.find_all_travel_times_and_paths(time_elapsed)
-        self.find_past_future_to_e_nodes()
+        self.set_past_and_future_paths()
 
     def find_all_travel_times_and_paths(self, time_elapsed: timedelta) -> None:
         # times_from_lkp_to_nodes is a dict of node to time in seconds
@@ -57,7 +64,7 @@ class TravelData:
             k: v - int(time_elapsed.total_seconds()) for k, v in self.times_from_lkp_to_nodes.items()
         }
 
-    def find_past_future_to_e_nodes(self):
+    def set_past_and_future_paths(self):
         # For each Escape Node (en)
         for e_n in self.escape_nodes:
             full_path_to_e_n = self.paths_to_nodes[e_n]
