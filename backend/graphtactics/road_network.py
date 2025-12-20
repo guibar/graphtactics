@@ -8,7 +8,7 @@ from networkx import MultiDiGraph, single_source_dijkstra
 from numpy.random import default_rng
 from osmnx import settings, shortest_path
 from osmnx.distance import nearest_edges, nearest_nodes
-from pandas import Index
+from pandas import DataFrame
 from shapely import ops
 from shapely.geometry import LineString, Point, Polygon
 
@@ -228,18 +228,17 @@ class RoadNetwork:
         Returns:
             List of EdgeRef namedtuples (u,v,ec)
         """
-
         rng = default_rng(seed)
+        edge_cursors: list[float]
+        random_edges: DataFrame = self.edges_df.iloc[rng.choice(len(self.edges_df), qty, replace=False)]
         if on_node:
-            uids = list(self.nodes_df.iloc[rng.choice(len(self.nodes_df), qty, replace=False)].index)
-            return [self.create_position_from_node(u) for u in uids]
+            edge_cursors = [0.0] * qty
         else:
-            random_edges = self.edges_df.iloc[rng.choice(len(self.edges_df), qty, replace=False)]
-            edge_cursors = rng.random(qty)
-            return [
-                self.create_position_from_edge_ref(EdgeRef(random_edge.u, random_edge.v, edge_cursor))
-                for random_edge, edge_cursor in zip(random_edges.itertuples(), edge_cursors)
-            ]
+            edge_cursors = cast(list[float], rng.random(qty))
+        return [
+            self.create_position_from_edge_ref(EdgeRef(random_edge.u, random_edge.v, edge_cursor))
+            for random_edge, edge_cursor in zip(random_edges.itertuples(), edge_cursors)
+        ]
 
     def is_inner(self, node_id: int) -> bool:
         return self.graph.nodes[node_id]["inner"]
