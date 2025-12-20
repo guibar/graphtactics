@@ -47,7 +47,3 @@ class Scenario:
         self.time_now: datetime = last_time_seen + time_elapsed
         self.adversary: Adversary = Adversary(network, lk_point, last_time_seen, time_elapsed)
         self.vehicles: dict[int, Vehicle] = vehicles
-
-
-class TooLateForThisPathException(Exception):
-    pass
