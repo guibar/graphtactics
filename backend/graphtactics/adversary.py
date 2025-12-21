@@ -29,7 +29,7 @@ class Adversary:
 
     def get_stats(self) -> dict[str, int]:
         return {
-            "nb_escape_nodes": len(self.travel_data.escape_nodes),
+            "nb_escape_nodes": len(self.network.get_escape_nodes()),
             "nb_njois": len(self.travel_data.get_njois()),
             "nb_candidate_nodes": len(self.candidate_nodes.get_candidate_nodes()),
             "max_possible_score": sum(
@@ -45,7 +45,6 @@ class TravelData:
     def __init__(self, network: RoadNetwork, adversary: Adversary, time_elapsed: timedelta):
         self.network = network
         self.adversary = adversary
-        self.escape_nodes: list[int] = network.get_escape_nodes()
 
         self.times_to_nodes: dict[int, int] = {}  # 10 -> 10s to reach the node; -10 -> node was reached 10s ago
         self.paths_to_nodes: dict[int, list[int]] = {}
@@ -67,11 +66,11 @@ class TravelData:
 
     def set_past_and_future_paths(self):
         # For each Escape Node (en)
-        for e_n in self.escape_nodes:
+        for e_n in self.network.get_escape_nodes():
             # find first escape node in the path
             first_escape_node = None
             for node in self.paths_to_nodes[e_n]:
-                if node in self.escape_nodes:
+                if node in self.network.get_escape_nodes():
                     first_escape_node = node
                     break
 
