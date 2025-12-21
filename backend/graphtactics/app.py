@@ -21,7 +21,7 @@ from .vehicle import Vehicle
 logger = logging.getLogger(__name__)
 
 # Available networks (from github_network_files.py)
-AVAILABLE_NETWORKS = ["30", "60", "60c", "67", "67c", "74", "74c", "82", "d2", "noailles", "st_quentin", "vauvert"]
+AVAILABLE_NETWORKS = ["30", "60", "60c", "67", "74", "82", "d2", "noailles", "st_quentin", "vauvert"]
 
 
 @asynccontextmanager
@@ -72,7 +72,7 @@ async def list_networks():
     return {"available": AVAILABLE_NETWORKS, "current": app.state.network.name}
 
 
-@app.post("/networks/{network_name}")
+@app.get("/network/{network_name}")
 async def switch_network(network_name: str):
     """
     Switch to a different network.
