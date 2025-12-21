@@ -13,7 +13,6 @@ from .adversary import TravelData
 from .planner import Plan
 from .road_network import RoadNetwork
 from .scenario import Scenario
-from .utils import get_star_polygon
 from .vehicle import Vehicle
 
 
@@ -98,8 +97,9 @@ class TravelDataResponse(BaseModel):
 
     @staticmethod
     def _travel_data_to_isochrone_geojson(travel_data: TravelData) -> dict[str, Any]:
-        star_polygon = get_star_polygon(travel_data.network.get_node_set_as_gdf(travel_data.get_njois()))
-        return to_feature_collection([{"type": "Feature", "geometry": mapping(star_polygon), "properties": {}}])
+        return to_feature_collection(
+            [{"type": "Feature", "geometry": mapping(travel_data.get_isochrone()), "properties": {}}]
+        )
 
     @staticmethod
     def _travel_data_to_future_paths_geojson(travel_data: TravelData) -> dict[str, Any]:

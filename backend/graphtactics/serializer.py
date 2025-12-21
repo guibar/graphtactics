@@ -10,7 +10,7 @@ from .adversary import TravelData
 from .planner import Plan
 from .road_network import RoadNetwork
 from .scenario import Scenario
-from .utils import get_star_polygon, plans_dir
+from .utils import plans_dir
 from .vehicle import Vehicle
 
 logger = getLogger(__name__)
@@ -111,13 +111,13 @@ class Serializer:
             return
         travel_data = self.scenario.adversary.travel_data
         self.travel_data_to_isochrone_gdf(travel_data).to_file(self.filepath, layer="td_isochrone", driver="GPKG")
-        self.travel_data_to_past_paths_gdf(travel_data).to_file(self.filepath, layer="td_past_paths", driver="GPKG")
-        self.travel_data_to_future_paths_gdf(travel_data).to_file(self.filepath, layer="td_future_paths", driver="GPKG")
+        # self.travel_data_to_past_paths_gdf(travel_data).to_file(self.filepath, layer="td_past_paths", driver="GPKG")
+        # self.travel_data_to_future_paths_gdf(travel_data).to_file(self.filepath, layer="td_future_paths", driver="GPKG")
         self.travel_data_to_full_paths_gdf(travel_data).to_file(self.filepath, layer="td_full_paths", driver="GPKG")
 
     def travel_data_to_isochrone_gdf(self, travel_data: TravelData) -> GeoDataFrame:
         return GeoDataFrame(
-            [{"geometry": get_star_polygon(self.network.get_node_set_as_gdf(travel_data.get_njois()))}],
+            [{"geometry": travel_data.get_isochrone()}],
             crs="EPSG:4326",
         )
 

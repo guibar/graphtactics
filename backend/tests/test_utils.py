@@ -6,7 +6,7 @@ from pandas import Index
 from shapely.geometry import Point
 
 from graphtactics.road_network_factory import boundary_from_name, extract_zip_url, get_departments_gdf
-from graphtactics.utils import get_star_polygon, get_tolls
+from graphtactics.utils import get_tolls
 
 
 @pytest.fixture
@@ -42,22 +42,6 @@ def extracted_departements(tmp_path, monkeypatch, test_departements_zip):
     extract_zip_url("http://fake-url.com", str(dest_folder))
 
     return dest_folder
-
-
-def test_get_polygon():
-    gdf = GeoDataFrame(
-        [Point(-1, -1), Point(1, 1), Point(-1, 1), Point(1, -1)],
-        crs="EPSG:4326",
-        columns=Index(["geometry"]),
-    )
-    polygon = get_star_polygon(gdf)
-    assert list(polygon.exterior.coords) == [
-        (-1.0, -1.0),
-        (1.0, -1.0),
-        (1.0, 1.0),
-        (-1.0, 1.0),
-        (-1.0, -1.0),
-    ]
 
 
 def test_get_tolls():

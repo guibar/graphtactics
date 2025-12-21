@@ -83,37 +83,6 @@ def convert_bool_string(value):
         raise ValueError(f'invalid literal for boolean: "{value}"')
 
 
-def get_star_polygon(points_gdf: GeoDataFrame) -> Polygon:
-    if len(points_gdf) < 3:
-        return Polygon()
-    point_list: list[Point] = cast(list[Point], [p for p in points_gdf.geometry])
-    cx, cy = sum(p.x for p in point_list) / len(point_list), sum(p.y for p in point_list) / len(point_list)
-    point_list.sort(key=lambda p: atan2(p.y - cy, p.x - cx))
-    return Polygon(point_list)
-
-
-def convert_here_json_isochrone_to_gpkg(here_isochrone_json_file) -> None:
-    if not here_isochrone_json_file.endswith(".json"):
-        logger.warning(here_isochrone_json_file + " is not a json file")
-        return
-
-    gpkg_filepath = here_isochrone_json_file[:-4] + "gpkg"
-    logger.info("Will save result to " + gpkg_filepath)
-
-    with open(here_isochrone_json_file) as json_file:
-        here_isochrone_json = json.load(json_file)
-
-    coords_lat_lng_str: list[str] = here_isochrone_json["response"]["isoline"][0]["component"][0]["shape"]
-
-    # convert "lat,long" into (long,lat), [::-1] inverts the tuple order
-    def convert_coords(coords_as_str: str) -> tuple[float, ...]:
-        return tuple(map(float, coords_as_str.split(",")))[::-1]
-
-    polygon = Polygon(list(map(convert_coords, coords_lat_lng_str)))
-    isochrone_as_gdf: GeoDataFrame = GeoDataFrame(geometry=[polygon], crs="EPSG:4326")
-    isochrone_as_gdf.to_file(gpkg_filepath, driver="GPKG")
-
-
 # TODO: Tolls are not included in the graph, at least not with current options. We would probably
 # get them with simplify=False, but with other nodes we are not interested in. We should
 # test to see what nodes 'simplify=False' adds. Maybe they are interesting nodes for us.

@@ -240,11 +240,11 @@ class RoadNetwork:
             for random_edge, edge_cursor in zip(random_edges.itertuples(), edge_cursors)
         ]
 
-    def is_inner(self, node_id: int) -> bool:
-        return self.graph.nodes[node_id]["inner"]
+    def has_in_boundary(self, position: Position) -> bool:
+        return self.graph.nodes[position.u]["inner"]
 
     def get_escape_nodes(self) -> list[int]:
-        return self.out_edges_df["out"].tolist()
+        return self.out_edges_df["out"].unique().tolist()
 
     def get_times_and_paths_from(self, source: int) -> tuple[dict[int, int], dict[int, list[int]]]:
         # the return types of single_source_dijkstra are a union to cater for the case where the
@@ -384,3 +384,11 @@ class RoadNetwork:
             return edge_data
         # Cast to expected return type - caller is responsible for ensuring type safety
         return cast(str | dict[str, object], edge_data.get(key, default))
+
+    def get_edge_position_after_time(self, u: int, v: int, time_elapsed: int) -> Point:
+        # find the edge between the nodes with the minimum travel time
+        edge_data: dict[str, object] = min(self.graph.get_edge_data(u, v).values(), key=lambda x: x["travel_time"])
+        edge_travel_time: float = cast(float, edge_data["travel_time"])
+        if not (0 <= time_elapsed <= edge_travel_time):
+            raise ValueError(f"Time elapsed {time_elapsed} is out of bounds for edge {u}-{v}")
+        return self.edge_ref_to_point(EdgeRef(u, v, time_elapsed / edge_travel_time))
