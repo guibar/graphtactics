@@ -145,7 +145,7 @@ def get_departement_polygon(departement_code: str, include_neighbours: bool) -> 
         departements_around: GeoDataFrame = cast(
             GeoDataFrame, departments_gdf[~departments_gdf.geometry.disjoint(shape)].copy()
         )
-        logger.info(f"The following departements will be included in the area: {list(departements_around.code_insee)}")
+        logger.info(f"The following departements will be included in the area: {list(departements_around.DDEP_C_COD)}")
         shape = cast(BaseGeometry, departements_around.union_all())
     # make sure to return a Polygon, not a MultiPolygon
     if shape.geom_type == "Polygon":
@@ -476,6 +476,14 @@ class RoadNetworkFactory:
             truncate_by_edge=True,
             custom_filter=major_highways,
         )
+        logger.info(f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
+        # keep only the largest connected component
+        graph = osmnx.truncate.largest_component(graph, strongly=True)
+        logger.info(
+            f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()}"
+            + " edges after removing disconnected components"
+        )
+
         logger.info("OSM data downloaded, processing the graph ...")
         nodes_gdf: GeoDataFrame
         edges_gdf: GeoDataFrame
@@ -528,7 +536,7 @@ class RoadNetworkFactory:
 
 
 def main():
-    factory: RoadNetworkFactory = RoadNetworkFactory(cache_dir="networks.tmp")
+    factory: RoadNetworkFactory = RoadNetworkFactory()
     factory.create(sys.argv[1], create_from_scratch=True)
 
 
