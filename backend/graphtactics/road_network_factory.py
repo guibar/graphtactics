@@ -4,9 +4,9 @@ import os
 import re
 import sys
 from io import BytesIO
+from pathlib import Path
 from typing import cast
-from urllib.error import HTTPError
-from urllib.request import urlopen, urlretrieve
+from urllib.request import urlopen
 from zipfile import BadZipFile, ZipFile, is_zipfile
 
 import osmnx
@@ -25,6 +25,12 @@ from shapely import MultiPolygon
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
+from .config import (
+    DEPARTEMENTS_DATA_DIR,
+    DEPARTEMENTS_SHP_FILE_PATH,
+    DEPARTEMENTS_SHP_ZIPPED_URL,
+)
+from .github_network_files import download_files
 from .road_network import RoadNetwork
 from .utils import (
     convert_bool_string,
@@ -40,11 +46,6 @@ logger = logging.getLogger(__name__)
 network_dir: str = os.path.join(data_dir, "networks")
 osmnx.settings.cache_folder = os.path.join(data_dir, "osmnx_cache")
 osmnx.settings.use_cache = True
-
-# departments_shp_zipped_url = "https://www.data.gouv.fr/en/datasets/r/eb36371a-761d-44a8-93ec-3d728bec17ce"
-departments_shp_zipped_url = "https://data-interne.ademe.fr/data-fair/api/v1/datasets/geo-contours-departements/data-files/GEO_Contours_Departements.zip"
-departments_data_dir = os.path.join(data_dir, "departements")
-departments_file_name = "Departements.shp"
 
 
 def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = 2000) -> Polygon:
@@ -214,7 +215,7 @@ def analyze_boundary(
     return x_edges, intersection_points_gdf, nodes_in_polygon
 
 
-def extract_zip_url(url: str, dest_folder: str) -> None:
+def extract_zip_url(url: str, dest_folder: Path) -> None:
     """
     Download the zip file at the given URL and extract its contents into the destination folder.
 
@@ -239,7 +240,7 @@ def extract_zip_url(url: str, dest_folder: str) -> None:
         raise Exception(f"Error extracting from {url}: {e}")
 
 
-def get_departments_gdf(dir: str = departments_data_dir) -> GeoDataFrame:
+def get_departments_gdf(dir: Path = DEPARTEMENTS_DATA_DIR) -> GeoDataFrame:
     """
     Load the GeoDataFrame containing French department boundaries.
 
@@ -255,16 +256,17 @@ def get_departments_gdf(dir: str = departments_data_dir) -> GeoDataFrame:
         FileNotFoundError: If the shapefile cannot be found in the downloaded archive.
         Exception: For any issues encountered during file download or extraction.
     """
-    shp_file_path = os.path.join(departments_data_dir, departments_file_name)
-    if not os.path.exists(shp_file_path):
-        logger.info(f"File {shp_file_path} not cached, downloading it from {departments_shp_zipped_url} ...")
+    if not DEPARTEMENTS_SHP_FILE_PATH.exists():
+        logger.info(
+            f"File {DEPARTEMENTS_SHP_FILE_PATH} not cached, downloading it from {DEPARTEMENTS_SHP_ZIPPED_URL} ..."
+        )
 
-        extract_zip_url(departments_shp_zipped_url, departments_data_dir)
-        if not os.path.exists(shp_file_path):
-            raise FileNotFoundError(f"Shapefile not found after extraction: {shp_file_path}")
+        extract_zip_url(DEPARTEMENTS_SHP_ZIPPED_URL, DEPARTEMENTS_DATA_DIR)
+        if not DEPARTEMENTS_SHP_FILE_PATH.exists():
+            raise FileNotFoundError(f"Shapefile not found after extraction: {DEPARTEMENTS_SHP_FILE_PATH}")
     else:
-        logger.info(f"Loading {shp_file_path} from cache")
-    return read_file(shp_file_path)
+        logger.info(f"Loading {DEPARTEMENTS_SHP_FILE_PATH} from cache")
+    return read_file(DEPARTEMENTS_SHP_FILE_PATH)
 
 
 class RoadNetworkFactory:
@@ -287,13 +289,9 @@ class RoadNetworkFactory:
     def __init__(
         self,
         bbox_file: str = os.path.join(data_dir, "boxes.json"),
-        github_repo: str = "guibar/graphtactics",
-        github_release_tag: str = "osm-networks-v1.0",
         cache_dir: str = os.path.join(data_dir, "networks"),
     ):
         self.bbox_file = bbox_file
-        self.github_repo = github_repo
-        self.github_release_tag = github_release_tag
         self.cache_dir = cache_dir
 
         # Ensure cache directory exists
@@ -381,7 +379,7 @@ class RoadNetworkFactory:
         if os.path.isfile(self.graphml_path) and os.path.isfile(self.gpkg_path):
             return self.instantiate_from_files()
         # 2. Try to download from GitHub releases
-        elif self.download_files_from_github():
+        elif download_files(self.name, Path(self.cache_dir)):
             return self.instantiate_from_files()
         # 3. We recreate from boundaries, the early check ensures this should work
         else:
@@ -414,42 +412,6 @@ class RoadNetworkFactory:
             boundary=boundary,
             boundary_buff=boundary_buff,
         )
-
-    def download_files_from_github(self) -> bool:
-        """Download network files from GitHub releases if available.
-        Args:
-            name: Network identifier
-        Returns:
-            True if files were successfully downloaded, False otherwise
-        """
-
-        # Determine the release URL
-        if self.github_release_tag == "latest":
-            base_url = f"https://github.com/{self.github_repo}/releases/latest/download"
-        else:
-            base_url = f"https://github.com/{self.github_repo}/releases/download/{self.github_release_tag}"
-
-        graphml_url = f"{base_url}/{self.name}.graphml"
-        gpkg_url = f"{base_url}/{self.name}.gpkg"
-
-        try:
-            logger.info(f"Attempting to download graphml from {graphml_url}")
-            urlretrieve(graphml_url, self.graphml_path)
-            logger.info(f"Attempting to download gpkg from {gpkg_url}")
-            urlretrieve(gpkg_url, self.gpkg_path)
-            logger.info(f"Successfully downloaded graphml and gpkg for '{self.name}' from GitHub")
-            return True
-        except HTTPError as e:
-            logger.debug(f"GitHub release files not found for '{self.name}': {e}")
-        except Exception as e:
-            logger.warning(f"Failed to download from GitHub for '{self.name}': {e}")
-
-        # Clean up partial downloads (only reached if exception occurred)
-        if os.path.exists(self.graphml_path):
-            os.remove(self.graphml_path)
-        if os.path.exists(self.gpkg_path):
-            os.remove(self.gpkg_path)
-        return False
 
     def create_files_from_boundary(self, boundary: Polygon) -> None:
         """

@@ -5,29 +5,20 @@ This script uploads .graphml and .gpkg files to a GitHub release.
 Customize the REPO, TAG, and FILES_TO_UPLOAD as needed.
 """
 
-import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+import requests
 from github import Github, GithubException
 
-from .app import AVAILABLE_NETWORKS
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Configuration - modify these variables
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-REPO_NAME = "guibar/graphtactics"
-RELEASE_TAG = "osm-networks-v1.0"
-RELEASE_NAME = "Network Files v1.0."
-RELEASE_DESCRIPTION = "Pre-generated network files some areas"
-
-# Directory containing network files
-NETWORK_DIR = Path(__file__).parent.parent / "data" / "networks"
-
-# Files to upload (modify this list)
-FILES_TO_UPLOAD = [f"{name}.graphml" for name in AVAILABLE_NETWORKS] + [f"{name}.gpkg" for name in AVAILABLE_NETWORKS]
+from .config import (
+    ALL_NETWORK_FILES,
+    GITHUB_TOKEN,
+    NETWORK_DIR,
+    RELEASE_DESCRIPTION,
+    RELEASE_NAME,
+    RELEASE_TAG,
+    REPO_NAME,
+)
 
 
 def create_or_get_release(repo, tag: str, name: str, description: str):
@@ -85,6 +76,70 @@ def upload_files_to_release(release, files: list[str], network_dir: Path):
             print(f"❌ Failed to upload {filename}: {e}")
 
 
+def download_files(file_prefix: str, cache_dir: Path = NETWORK_DIR) -> bool:
+    """Download network files from GitHub releases if available.
+
+    Args:
+        file_prefix: Network identifier (filename prefix)
+        cache_dir: Directory to save the files
+
+    Returns:
+        True if files were successfully downloaded, False otherwise
+    """
+    graphml_path = cache_dir / f"{file_prefix}.graphml"
+    gpkg_path = cache_dir / f"{file_prefix}.gpkg"
+
+    try:
+        # Initialize GitHub client (read-only, no token needed for public repos)
+        g = Github()
+
+        # Get repository
+        repo = g.get_repo(REPO_NAME)
+
+        release = repo.get_release(RELEASE_TAG)
+
+        # Find and download the assets
+        graphml_asset = None
+        gpkg_asset = None
+
+        for asset in release.get_assets():
+            if asset.name == f"{file_prefix}.graphml":
+                graphml_asset = asset
+            elif asset.name == f"{file_prefix}.gpkg":
+                gpkg_asset = asset
+
+        if not graphml_asset or not gpkg_asset:
+            print(f"⚠️ Assets not found for '{file_prefix}' in release {RELEASE_TAG}")
+            return False
+
+        # Download graphml
+        print(f"📥 Downloading {graphml_asset.name}...")
+        response = requests.get(graphml_asset.browser_download_url)
+        response.raise_for_status()
+        graphml_path.write_bytes(response.content)
+
+        # Download gpkg
+        print(f"📥 Downloading {gpkg_asset.name}...")
+        response = requests.get(gpkg_asset.browser_download_url)
+        response.raise_for_status()
+        gpkg_path.write_bytes(response.content)
+
+        print(f"✅ Successfully downloaded files for '{file_prefix}' from GitHub")
+        return True
+
+    except GithubException as e:
+        print(f"❌ GitHub error for '{file_prefix}': {e}")
+    except Exception as e:
+        print(f"❌ Failed to download from GitHub for '{file_prefix}': {e}")
+
+    # Clean up partial downloads (only reached if exception occurred)
+    if graphml_path.exists():
+        graphml_path.unlink()
+    if gpkg_path.exists():
+        gpkg_path.unlink()
+    return False
+
+
 def main():
     """Main entry point."""
     # Check for GitHub token
@@ -107,7 +162,7 @@ def main():
 
         # Upload files
         print(f"\n📁 Network directory: {NETWORK_DIR}")
-        upload_files_to_release(release, FILES_TO_UPLOAD, NETWORK_DIR)
+        upload_files_to_release(release, ALL_NETWORK_FILES, NETWORK_DIR)
 
         # Print download URLs
         print("\n✅ Done! Files available at:")

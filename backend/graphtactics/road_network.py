@@ -1,6 +1,5 @@
 import logging
 from collections import namedtuple
-from collections.abc import KeysView
 from typing import cast
 
 from geopandas import GeoDataFrame

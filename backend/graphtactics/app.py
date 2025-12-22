@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from geopandas import GeoDataFrame
 from shapely.geometry import Point
 
+from .config import AVAILABLE_NETWORKS
 from .dtos import PlanResponse, ScenarioDTO, VehicleResponse
 from .planner import Planner
 from .road_network import RoadNetwork
@@ -19,9 +20,6 @@ from .serializer import Serializer
 from .vehicle import Vehicle
 
 logger = logging.getLogger(__name__)
-
-# Available networks (from github_network_files.py)
-AVAILABLE_NETWORKS = ["30", "60", "60c", "67", "74", "82", "d2", "noailles", "st_quentin", "vauvert"]
 
 
 @asynccontextmanager
