@@ -111,8 +111,8 @@ class Serializer:
             return
         travel_data = self.scenario.adversary.travel_data
         self.travel_data_to_isochrone_gdf(travel_data).to_file(self.filepath, layer="td_isochrone", driver="GPKG")
-        # self.travel_data_to_past_paths_gdf(travel_data).to_file(self.filepath, layer="td_past_paths", driver="GPKG")
-        # self.travel_data_to_future_paths_gdf(travel_data).to_file(self.filepath, layer="td_future_paths", driver="GPKG")
+        self.travel_data_to_past_paths_gdf(travel_data).to_file(self.filepath, layer="td_past_paths", driver="GPKG")
+        self.travel_data_to_future_paths_gdf(travel_data).to_file(self.filepath, layer="td_future_paths", driver="GPKG")
         self.travel_data_to_full_paths_gdf(travel_data).to_file(self.filepath, layer="td_full_paths", driver="GPKG")
 
     def travel_data_to_isochrone_gdf(self, travel_data: TravelData) -> GeoDataFrame:
