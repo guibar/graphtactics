@@ -8,7 +8,7 @@ from networkx import MultiDiGraph, single_source_dijkstra
 from numpy.random import default_rng
 from osmnx import settings, shortest_path
 from osmnx.distance import nearest_edges, nearest_nodes
-from pandas import DataFrame
+from pandas import DataFrame, Index
 from shapely import ops
 from shapely.geometry import LineString, Point, Polygon
 
