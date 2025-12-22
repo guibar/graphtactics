@@ -322,7 +322,7 @@ export default defineComponent({
         
         const request = isInit 
             ? this.$axios.get('init') 
-            : this.$axios.post(`networks/${this.zone}`);
+            : this.$axios.get(`network/${this.zone}`);
 
         request
           .then((response: AxiosResponse) => {
