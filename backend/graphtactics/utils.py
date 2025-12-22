@@ -1,10 +1,7 @@
-import json
 import logging
 import os
 from collections import OrderedDict
-from math import atan2
 from pathlib import Path
-from typing import cast
 
 import pandas
 from geopandas import GeoDataFrame
