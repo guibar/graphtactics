@@ -235,8 +235,8 @@ class RoadNetwork:
         else:
             edge_cursors = cast(list[float], rng.random(qty))
         return [
-            self.create_position_from_edge_ref(EdgeRef(random_edge.u, random_edge.v, edge_cursor))
-            for random_edge, edge_cursor in zip(random_edges.itertuples(), edge_cursors)
+            self.create_position_from_edge_ref(EdgeRef(int(random_edge["u"]), int(random_edge["v"]), edge_cursor))
+            for (_, random_edge), edge_cursor in zip(random_edges.iterrows(), edge_cursors)
         ]
 
     def has_in_boundary(self, position: Position) -> bool:
