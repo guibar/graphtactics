@@ -5,7 +5,7 @@ from ortools.sat.python import cp_model
 from ortools.sat.python.cp_model import IntVar
 from pandas import Index
 
-from .adversary import CandidateNodes, TravelData
+from .adversary import TravelData
 from .road_network import RoadNetwork
 from .scenario import Scenario
 from .vehicle import Vehicle, VehicleAssignment, VehicleStatus
@@ -20,17 +20,18 @@ class Planner:
         self.network = network
         self.vehicles: dict[int, Vehicle] = scenario.vehicles
         self.assignable_vids: list[int] = []  # maps an int from 0 to (number of assignable -1) vehicles to vid
-        self.travel_data: TravelData = TravelData(self.network, scenario.adversary, scenario.time_elapsed)
-        self.candidate_nodes = CandidateNodes(self.travel_data)
+        self.travel_data: TravelData = scenario.adversary.travel_data
+        self.candidate_nodes = scenario.adversary.candidate_nodes
 
         for vehicle in self.vehicles.values():
             # Don't bother calculating travel times for vehicles that are too close to the action
-            if self.travel_data.times_to_nodes[vehicle.position.u] <= 0:
+            if self.travel_data.times_to_nodes.get(vehicle.position.u, 1) <= 0:
                 logger.debug(
                     f"Vehicle {vehicle.id} will not be assigned to the plan because the adversary has passed it."
                 )
                 vehicle.status = VehicleStatus.TOO_CLOSE_TO_LKP
             else:
+                # this is ugly the status gets set in set_travel_times if not enough points are reachable
                 vehicle.set_travel_times()
                 if vehicle.status == VehicleStatus.ASSIGNABLE:
                     self.assignable_vids.append(vehicle.id)
