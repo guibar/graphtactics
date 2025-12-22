@@ -113,7 +113,7 @@ async def get_init_data():
     return {
         "boundaries": boundaries_gdf.__geo_interface__,
         "origin_coords": {"lat": d_orig_pt.y, "lng": d_orig_pt.x},
-        "escape_points": network.get_node_set_as_gdf(network.get_escape_nodes()).__geo_interface__,
+        "escape_points": network.get_escape_nodes_as_gdf().__geo_interface__,
     }
 
 

@@ -335,8 +335,8 @@ class RoadNetwork:
         )
 
     # return the geometry only but as a dataframe, not a series
-    def get_node_set_as_gdf(self, the_set: set[int] | KeysView[int]):
-        return self.nodes_df[self.nodes_df.index.isin(the_set)].loc[:, ["geometry"]]
+    def get_escape_nodes_as_gdf(self) -> GeoDataFrame:
+        return self.nodes_df[self.nodes_df.index.isin(self.get_escape_nodes())].loc[:, ["geometry"]]
 
     # return the geometry only but as a dataframe, not a series
     def get_node_list_as_gdf(self, the_lst: list[int]):
