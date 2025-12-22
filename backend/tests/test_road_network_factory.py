@@ -203,12 +203,12 @@ class TestCreate:
 
         monkeypatch.setattr(factory, "instantiate_from_files", mock_instantiate)
 
-        # Mock download_files_from_github to track if it's called
-        def mock_download():
+        # Mock download_files to track if it's called
+        def mock_download(name):
             download_called.append(True)
             return False  # Return False so it doesn't proceed
 
-        monkeypatch.setattr(factory, "download_files_from_github", mock_download)
+        monkeypatch.setattr("graphtactics.github_network_files.download_files", mock_download)
 
         # Mock create_files_from_boundary to track if it's called
         def mock_create(boundary):
@@ -266,12 +266,12 @@ class TestCreate:
         # Assert: Network has expected attributes
         assert network.graph is not None
         assert isinstance(network.graph, MultiDiGraph)
-        assert len(network.graph.nodes()) == 7123
-        assert len(network.graph.edges()) == 14356
+        assert len(network.graph.nodes()) == 7599
+        assert len(network.graph.edges()) == 14995
         assert network.nodes_df is not None
-        assert len(network.nodes_df) == 7123
+        assert len(network.nodes_df) == 7599
         assert network.edges_df is not None
-        assert len(network.edges_df) == 14356
+        assert len(network.edges_df) == 14995
 
     def test_create_network_from_scratch(self, tmp_path):
         """Test creating files from boundary (integration test)."""
