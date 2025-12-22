@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+from shapely import Point
 
 from graphtactics.dtos import PlanResponse
 from graphtactics.planner import Planner
@@ -23,9 +24,10 @@ def road_network_60():
 @pytest.mark.timeout(30)
 def test_dispositif_10_vehicles(road_network_60):
     time_lkp = datetime.fromisoformat("2020-12-01T09:00:00")
+    lkp = Point(2.10496, 49.40171)
     scenario = Scenario(
         road_network_60,
-        road_network_60.node_to_point(7761323880),
+        lkp,
         time_lkp,
         Vehicle.get_random_vehicles(road_network_60, 50, seed=123, on_node=True),
         timedelta(minutes=7),
@@ -41,9 +43,10 @@ def test_dispositif_10_vehicles(road_network_60):
 @pytest.mark.timeout(30)
 def test_dispositif_50_vehicles(road_network_60):
     time_lkp = datetime.fromisoformat("2020-12-01T09:00:00")
+    lkp = Point(2.10496, 49.40171)
     scenario = Scenario(
         road_network_60,
-        road_network_60.node_to_point(7761323880),
+        lkp,
         time_lkp,
         Vehicle.get_random_vehicles(road_network_60, 50, seed=123, on_node=True),
         timedelta(minutes=7),
@@ -59,9 +62,10 @@ def test_dispositif_50_vehicles(road_network_60):
 @pytest.mark.timeout(30)
 def test_dispositif_100_vehicles(road_network_60):
     time_lkp = datetime.fromisoformat("2020-12-01T09:00:00")
+    lkp = Point(2.10496, 49.40171)
     scenario = Scenario(
         road_network_60,
-        road_network_60.node_to_point(7761323880),
+        lkp,
         time_lkp,
         Vehicle.get_random_vehicles(road_network_60, 100, seed=123, on_node=True),
         timedelta(minutes=7),

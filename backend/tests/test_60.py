@@ -58,14 +58,14 @@ def test_new_dispo(road_network_60):
     time_lkp = datetime.fromisoformat("2020-12-01T09:00:00")
     scenario = Scenario(
         network,
-        network.node_to_point(7761323880),
+        network.node_to_point(9281562110),
         time_lkp,
         Vehicle.get_random_vehicles(network, 7, seed=123, on_node=True),
         timedelta(minutes=7),
     )
     serializer = Serializer(network, scenario, None, "new_dispo_60")
     serializer.save()
-    assert len(scenario.adversary.travel_data.get_njois()) == 6
+    assert len(scenario.adversary.travel_data.get_njois()) == 4
     planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
     PlanResponse.from_domain(scenario, plan)

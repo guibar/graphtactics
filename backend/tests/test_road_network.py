@@ -33,16 +33,16 @@ def test_get_edge_data_317717938_7055380499(road_network_noailles):
     assert "highway" in dict_edge
     assert "oneway" in dict_edge
 
-    assert road_network_noailles.get_edge_data((317717938, 7055380499), "highway") == "secondary"
-    assert road_network_noailles.get_edge_data((317717938, 7055380499), "length") == 93.182
-    assert road_network_noailles.get_edge_data((317717938, 7055380499), "ref") == "D 2"
-    assert road_network_noailles.get_edge_data((317717938, 7055380499), "name") == "Rue Simonet"
-    assert road_network_noailles.get_edge_data((317717938, 7055380499), "oneway")
+    assert road_network_noailles.get_edge_data((317717938, 7055380498), "highway") == "secondary"
+    assert road_network_noailles.get_edge_data((317717938, 7055380498), "length") == pytest.approx(20.513, 0.001)
+    assert road_network_noailles.get_edge_data((317717938, 7055380498), "ref") == "D 2"
+    assert road_network_noailles.get_edge_data((317717938, 7055380498), "name") == "Rue Simonet"
+    assert road_network_noailles.get_edge_data((317717938, 7055380498), "oneway")
 
 
 # One tertiary and one residential -> should get tertiary
 def test_get_edge_data_1785952350_2423986443(road_network_noailles):
-    assert len(road_network_noailles.get_edge_data((2447852537, 661117435))) == 12
+    assert len(road_network_noailles.get_edge_data((2447852537, 661117435))) == 13
     assert road_network_noailles.get_edge_data((2447852537, 661117435), "highway") == "secondary"
     assert road_network_noailles.get_edge_data((2447852537, 661117435), "length") == pytest.approx(681.251, 0.001)
     dict_1 = road_network_noailles.get_edge_data((2447852537, 661117435))
@@ -53,10 +53,12 @@ def test_get_edge_data_1785952350_2423986443(road_network_noailles):
     del dict_1["geometry"]
     del dict_1["length"]
     del dict_1["name"]
+    del dict_1["travel_time"]
     del dict_2["bearing"]
     del dict_2["geometry"]
     del dict_2["length"]
     del dict_2["name"]
+    del dict_2["travel_time"]
 
     assert dict_1 == dict_2
 

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
+from shapely import Point
 
 from graphtactics.dtos import PlanResponse
 from graphtactics.planner import Planner
@@ -17,10 +18,11 @@ def road_network_60():
 
 def test_plan_response_geojson_structure(road_network_60):
     # Setup scenario
+    lkp = Point(2.10496, 49.40171)
     time_lkp = datetime.fromisoformat("2020-12-01T09:00:00")
     scenario = Scenario(
         road_network_60,
-        road_network_60.node_to_point(7761323880),
+        lkp,
         time_lkp,
         Vehicle.get_random_vehicles(road_network_60, 5, seed=123, on_node=True),
         timedelta(minutes=7),

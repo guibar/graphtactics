@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 # Set environment variable before importing app
 os.environ["NEO_GRAPH_NAME"] = "60"
 
-from graphtactics.app import app  # noqa: E402
+from graphtactics.app import app
 
 
 @pytest.fixture(scope="module")
@@ -57,7 +57,7 @@ class TestNetworkSwitching:
 
     def test_switch_to_valid_network(self, client):
         """Test switching to a valid network."""
-        response = client.post("/networks/noailles")
+        response = client.get("/network/noailles")
         assert response.status_code == 200
         data = response.json()
         assert "boundaries" in data
@@ -71,7 +71,7 @@ class TestNetworkSwitching:
         assert response.json()["current"] == "noailles"
 
         # Switch back to 60
-        client.post("/networks/60")
+        client.get("/network/60")
 
     def test_switch_to_invalid_network(self, client):
         """Test switching to an invalid network returns 404."""

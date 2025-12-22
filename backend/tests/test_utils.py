@@ -1,9 +1,6 @@
 from pathlib import Path
 
 import pytest
-from geopandas import GeoDataFrame
-from pandas import Index
-from shapely.geometry import Point
 
 from graphtactics.road_network_factory import boundary_from_name, extract_zip_url, get_departments_gdf
 from graphtactics.utils import get_tolls
