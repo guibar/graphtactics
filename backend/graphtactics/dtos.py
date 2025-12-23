@@ -4,13 +4,15 @@ These Pydantic models handle validation and conversion to domain objects.
 """
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
-from shapely.geometry import Point, mapping
+from shapely import Polygon, ops, unary_union
+from shapely.geometry import LineString, Point, mapping
 
 from .adversary import TravelData
 from .planner import Plan
+from .position import Position
 from .road_network import RoadNetwork
 from .scenario import Scenario
 from .vehicle import Vehicle
@@ -83,48 +85,76 @@ class VehicleResponse(BaseModel):
 class TravelDataResponse(BaseModel):
     """Response DTO for TravelData - serializes graph analysis to JSON."""
 
-    paths_to_njois: dict
+    past_paths: dict
     isochrone: dict
-    paths_from_njois: dict
+    future_paths: dict
 
     @classmethod
     def from_domain(cls, travel_data: TravelData) -> "TravelDataResponse":
+        past_linestrings = cls.to_or_from_exact_positions(
+            travel_data.network, travel_data.paths_to_e_nodes_past, travel_data.exact_positions, to=True
+        )
+
+        # Use past paths to create the isochrone polygon
+        isochrone_polygon = cast(Polygon, unary_union(past_linestrings).convex_hull)
+
         return cls(
-            paths_to_njois=cls._travel_data_to_past_paths_geojson(travel_data),
-            isochrone=cls._travel_data_to_isochrone_geojson(travel_data),
-            paths_from_njois=cls._travel_data_to_future_paths_geojson(travel_data),
+            past_paths=cls.linestrings_to_collection(past_linestrings),
+            isochrone={"type": "Feature", "geometry": mapping(isochrone_polygon), "properties": {}},
+            future_paths=cls.linestrings_to_collection(
+                cls.to_or_from_exact_positions(
+                    travel_data.network, travel_data.paths_to_e_nodes_future, travel_data.exact_positions, to=False
+                )
+            ),
         )
 
     @staticmethod
-    def _travel_data_to_isochrone_geojson(travel_data: TravelData) -> dict[str, Any]:
-        return to_feature_collection(
-            [{"type": "Feature", "geometry": mapping(travel_data.get_isochrone()), "properties": {}}]
-        )
+    def to_or_from_exact_positions(
+        network: RoadNetwork, paths: dict[int, list[int]], exact_positions: dict[int, Position | Point], to: bool
+    ) -> list[LineString]:
+        """Helper method to get linestrings without converting to GeoJSON."""
+        line_strings = []
+        for en, nodes in paths.items():
+            try:
+                line_string: LineString = network.to_linestring(nodes)
+            except ValueError:
+                line_string = LineString([network.node_to_point(en), network.node_to_point(en)])
+
+            if isinstance(exact_positions[en], Position):
+                position: Position = cast(Position, exact_positions[en])
+                if to:
+                    from_u_geom = network.u_to_position_as_ls(position.to_edge_ref())
+                    if isinstance(from_u_geom, LineString):
+                        # Concatenate coordinates directly to ensure we get a LineString
+                        line_string = cast(LineString, ops.linemerge([from_u_geom, line_string]))
+                else:
+                    to_v_geom = network.v_to_position_as_ls(position.to_edge_ref())
+                    if isinstance(to_v_geom, LineString):
+                        # Concatenate coordinates directly to ensure we get a LineString
+                        line_string = cast(LineString, ops.linemerge([to_v_geom, line_string]))
+            else:
+                # When exact_positions[en] is a Point (adversary passed the escape node)
+                point: Point = cast(Point, exact_positions[en])
+                if to:
+                    # For past paths: extend the linestring TO the extrapolated point
+                    line_string = LineString(list(line_string.coords) + [(point.x, point.y)])
+                else:
+                    # For future paths: extend the linestring FROM the extrapolated point
+                    # In this case, the future path is empty (adversary already passed),
+                    # so we create a minimal linestring from the point to itself
+                    line_string = LineString([(point.x, point.y)] + list(line_string.coords))
+            line_strings.append(line_string)
+        return line_strings
 
     @staticmethod
-    def _travel_data_to_future_paths_geojson(travel_data: TravelData) -> dict[str, Any]:
+    def linestrings_to_collection(linestrings: list[LineString]) -> dict[str, Any]:
         features = []
-        for en, nodes in travel_data.paths_to_e_nodes_future.items():
-            line_string = travel_data.network.to_linestring(nodes)
+        for line_string in linestrings:
             features.append(
                 {
                     "type": "Feature",
                     "geometry": mapping(line_string),
-                    "properties": {"en": en},
-                }
-            )
-        return to_feature_collection(features)
-
-    @staticmethod
-    def _travel_data_to_past_paths_geojson(travel_data: TravelData) -> dict[str, Any]:
-        features = []
-        for en, nodes in travel_data.paths_to_e_nodes_past.items():
-            line_string = travel_data.network.to_linestring(nodes)
-            features.append(
-                {
-                    "type": "Feature",
-                    "geometry": mapping(line_string),
-                    "properties": {"en": en},
+                    "properties": {},
                 }
             )
         return to_feature_collection(features)

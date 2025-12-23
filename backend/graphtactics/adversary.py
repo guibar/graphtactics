@@ -1,9 +1,7 @@
 import logging
 from bisect import bisect_right
 from datetime import datetime, timedelta
-from math import atan2
 
-from shapely import Polygon
 from shapely.geometry import Point
 
 from .position import Position
@@ -50,9 +48,7 @@ class TravelData:
         self.paths_to_nodes: dict[int, list[int]] = {}
         self.paths_to_e_nodes_past: dict[int, list[int]] = {}
         self.paths_to_e_nodes_future: dict[int, list[int]] = {}
-        self.exact_positions: dict[
-            int, Point
-        ] = {}  # associate an escape node to the exact point where the adversary is estimated to be
+        self.exact_positions: dict[int, Position | Point] = {}  # adversary exact position on its way to an escape node
         self.set_travel_times_and_paths(time_elapsed)
         self.set_past_and_future_paths()
 
@@ -98,7 +94,7 @@ class TravelData:
                     pointB = self.network.node_to_point(self.paths_to_nodes[e_n][-1])
                     time_from_A_to_B = times_along_path[-1] - times_along_path[-2]
                     ratio = -times_along_path[-2] / time_from_A_to_B
-
+                    # we store the exact position as a Point
                     self.exact_positions[e_n] = Point(
                         pointA.x + (pointB.x - pointA.x) * ratio,
                         pointA.y + (pointB.y - pointA.y) * ratio,
@@ -111,8 +107,8 @@ class TravelData:
                     )
             else:
                 logging.info(
-                    f"The path leading to {e_n} will not be processed here because it is a continuation of the path"
-                    + f"leading to {first_escape_node} and will be covered with that other path."
+                    f"The path leading to {e_n} will not be processed here because it is a continuation"
+                    + f" of the path leading to {first_escape_node} and will be covered with that other path."
                 )
 
     def set_positions_along_routes(self) -> None:
@@ -153,22 +149,6 @@ class TravelData:
     def get_njois(self) -> set[int]:
         """Return the set of all first nodes in paths_to_e_nodes_future."""
         return {path[0] for path in self.paths_to_e_nodes_future.values() if path}
-
-    def get_njiis(self) -> set[int]:
-        """Return the set of all last nodes in paths_to_e_nodes_past."""
-        return {path[-1] for path in self.paths_to_e_nodes_past.values() if path}
-
-    # Define a more precise isochrone
-    def get_isochrone(self) -> Polygon:
-        # no need to sort if there are less than 3 points
-        if len(self.exact_positions) < 3:
-            return Polygon(self.exact_positions.values())
-        point_list: list[Point] = [p for p in self.exact_positions.values()]
-        # find the approximate center of the polygon
-        cx, cy = sum(p.x for p in point_list) / len(point_list), sum(p.y for p in point_list) / len(point_list)
-        # sort the points by angle from the center
-        point_list.sort(key=lambda p: atan2(p.y - cy, p.x - cx))
-        return Polygon(point_list)
 
 
 class CandidateNodes:

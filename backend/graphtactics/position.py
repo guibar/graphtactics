@@ -4,8 +4,12 @@ Can be initialized either from coordinates (point) or from graph position (u/v/e
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from shapely.geometry import Point
+
+if TYPE_CHECKING:
+    from .road_network import EdgeRef
 
 
 @dataclass
@@ -33,3 +37,27 @@ class Position:
     u: int
     v: int
     ec: float
+
+    def __post_init__(self):
+        if self.ec < 0 or self.ec > 1:
+            raise ValueError("Edge cursor must be between 0 and 1")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Position):
+            return False
+        return (
+            self.u == other.u
+            and self.v == other.v
+            and self.floats_equal(self.ec, other.ec)
+            and self.floats_equal(self.point.x, other.point.x)
+            and self.floats_equal(self.point.y, other.point.y)
+        )
+
+    def to_edge_ref(self) -> "EdgeRef":
+        from .road_network import EdgeRef
+
+        return EdgeRef(self.u, self.v, self.ec)
+
+    @staticmethod
+    def floats_equal(a: float, b: float, epsilon: float = 1e-9) -> bool:
+        return abs(a - b) < epsilon

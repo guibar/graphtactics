@@ -4,6 +4,7 @@ from logging import getLogger
 
 from geopandas import GeoDataFrame, read_file
 from pandas import Index
+from shapely import LineString, unary_union
 from shapely.geometry import Point
 
 from .adversary import TravelData
@@ -116,8 +117,9 @@ class Serializer:
         self.travel_data_to_full_paths_gdf(travel_data).to_file(self.filepath, layer="td_full_paths", driver="GPKG")
 
     def travel_data_to_isochrone_gdf(self, travel_data: TravelData) -> GeoDataFrame:
+        point_list: list[Point] = [p if isinstance(p, Point) else p.point for p in travel_data.exact_positions.values()]
         return GeoDataFrame(
-            [{"geometry": travel_data.get_isochrone()}],
+            [{"geometry": unary_union(point_list).convex_hull}],
             crs="EPSG:4326",
         )
 
@@ -126,7 +128,9 @@ class Serializer:
             [
                 [
                     en,
-                    self.network.to_linestring(travel_data.paths_to_e_nodes_future[en]),
+                    self.network.to_linestring(travel_data.paths_to_e_nodes_future[en])
+                    if travel_data.paths_to_e_nodes_future[en]
+                    else LineString(),
                 ]
                 for en in travel_data.paths_to_e_nodes_future.keys()
             ],

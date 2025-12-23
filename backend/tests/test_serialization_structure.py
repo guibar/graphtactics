@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from shapely import Point
 
-from graphtactics.dtos import PlanResponse
+from graphtactics.dtos import PlanResponse, TravelDataResponse
 from graphtactics.planner import Planner
 from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.scenario import Scenario
@@ -16,35 +16,36 @@ def road_network_60():
     return factory.create("60")
 
 
-def test_plan_response_geojson_structure(road_network_60):
-    # Setup scenario
-    lkp = Point(2.10496, 49.40171)
-    time_lkp = datetime.fromisoformat("2020-12-01T09:00:00")
-    scenario = Scenario(
-        road_network_60,
-        lkp,
-        time_lkp,
-        Vehicle.get_random_vehicles(road_network_60, 5, seed=123, on_node=True),
-        timedelta(minutes=7),
-    )
+@pytest.fixture(scope="module")
+def a_scenario(road_network_60):
+    """Factory fixture to create scenarios with common setup."""
 
+    def _create_scenario():
+        return Scenario(
+            road_network_60,
+            Point(2.10496, 49.40171),
+            datetime.fromisoformat("2020-12-01T09:00:00"),
+            Vehicle.get_random_vehicles(road_network_60, 3, seed=123, on_node=True),
+            timedelta(minutes=5),
+        )
+
+    return _create_scenario
+
+
+def test_plan_response_geojson_structure(a_scenario, road_network_60):
     # Generate plan
-    planner = Planner(road_network_60, scenario)
+    planner = Planner(road_network_60, a_scenario())
     plan = planner.plan_interception()
 
     # Serialize
-    response = PlanResponse.from_domain(scenario, plan)
+    response = PlanResponse.from_domain(a_scenario(), plan)
     payload = response.model_dump()
 
     # Verification Helper
-    def verify_feature_collection(fc, expected_feature_count=None):
+    def verify_feature_collection(fc, expected_feature_count):
         assert fc["type"] == "FeatureCollection"
         assert isinstance(fc["features"], list)
-        if expected_feature_count is not None:
-            if expected_feature_count == -1:  # Just check if not empty
-                assert len(fc["features"]) > 0
-            else:
-                assert len(fc["features"]) == expected_feature_count
+        assert len(fc["features"]) == expected_feature_count
 
         for feature in fc["features"]:
             assert feature["type"] == "Feature"
@@ -58,11 +59,121 @@ def test_plan_response_geojson_structure(road_network_60):
 
     # Verify specific fields
     travel_data = payload["travel_data"]
-    verify_feature_collection(travel_data["paths_to_njois"], expected_feature_count=-1)
-    verify_feature_collection(travel_data["isochrone"], expected_feature_count=1)
-    verify_feature_collection(travel_data["paths_from_njois"], expected_feature_count=-1)
+    # Isochrone is now a single Feature, not a FeatureCollection
+    assert travel_data["isochrone"]["type"] == "Feature"
+    assert "geometry" in travel_data["isochrone"]
+    verify_feature_collection(travel_data["future_paths"], expected_feature_count=72)
 
     # Affectations might be empty if no solution found, but with 5 vehicles and 7 mins it should find something usually.
     # The solver might fail or return empty if no solution, so we check just structure.
-    verify_feature_collection(payload["affectations"])
-    verify_feature_collection(payload["destinations"])
+    verify_feature_collection(payload["affectations"], expected_feature_count=2)
+    verify_feature_collection(payload["destinations"], expected_feature_count=2)
+
+
+def test_travel_data_future_paths_with_exact_positions(a_scenario):
+    """Test that future paths correctly include the to_v_linestring portion from exact positions."""
+    travel_data = a_scenario().adversary.travel_data
+
+    # Verify that exact_positions is populated
+    assert len(travel_data.exact_positions) > 0, "TravelData should have exact positions"
+
+    # Call the method under test
+    line_strings = TravelDataResponse.to_or_from_exact_positions(
+        travel_data.network, travel_data.paths_to_e_nodes_future, travel_data.exact_positions, to=False
+    )
+    result = TravelDataResponse.linestrings_to_collection(line_strings)
+
+    # Verify GeoJSON structure
+    assert result["type"] == "FeatureCollection"
+    assert isinstance(result["features"], list)
+    assert len(result["features"]) > 0
+
+    # Track how many features have exact positions
+    features_with_exact_pos = 0
+
+    # Verify each feature
+    for feature in result["features"]:
+        assert feature["type"] == "Feature"
+        assert "geometry" in feature
+        assert "properties" in feature
+
+        # Verify geometry is a LineString
+        geometry = feature["geometry"]
+        assert geometry["type"] == "LineString"
+        assert isinstance(geometry["coordinates"], tuple)
+        assert len(geometry["coordinates"]) > 0
+
+        features_with_exact_pos += 1
+        assert len(geometry["coordinates"]) >= 2, "LineString should have at least 2 points"
+
+    assert features_with_exact_pos > 0, "At least some escape nodes should have exact positions"
+
+
+def test_travel_data_past_paths_with_exact_positions(a_scenario):
+    """Test that past paths correctly include the from_u_linestring portion from exact positions."""
+    travel_data = a_scenario().adversary.travel_data
+
+    # Verify that exact_positions is populated
+    # TravelData should have exact positions
+    assert len(travel_data.exact_positions) == len(travel_data.paths_to_e_nodes_future)
+
+    # Call the method under test
+    line_strings = TravelDataResponse.to_or_from_exact_positions(
+        travel_data.network, travel_data.paths_to_e_nodes_past, travel_data.exact_positions, to=True
+    )
+    result = TravelDataResponse.linestrings_to_collection(line_strings)
+
+    # Verify GeoJSON structure
+    assert result["type"] == "FeatureCollection"
+    assert isinstance(result["features"], list)
+    assert len(result["features"]) == len(travel_data.paths_to_e_nodes_future)
+
+    # Track how many features have exact positions
+    features_with_exact_pos = 0
+
+    # Verify each feature
+    for feature in result["features"]:
+        assert feature["type"] == "Feature"
+        assert "geometry" in feature
+        assert "properties" in feature
+
+        # Verify geometry is a LineString (or MultiLineString after merge)
+        geometry = feature["geometry"]
+        assert geometry["type"] == "LineString"
+        assert isinstance(geometry["coordinates"], (list, tuple))
+        assert len(geometry["coordinates"]) > 0
+
+        features_with_exact_pos += 1
+        # Verify the linestring has coordinates
+        assert len(geometry["coordinates"]) >= 2, "LineString should have at least 2 points"
+
+    # Verify that at least some features had exact positions
+    assert features_with_exact_pos > 0, "At least some escape nodes should have exact positions"
+
+
+def test_travel_data_paths_geometry_merging(a_scenario):
+    travel_data = a_scenario().adversary.travel_data
+
+    # Get both future and past paths
+    future_line_strings = TravelDataResponse.to_or_from_exact_positions(
+        travel_data.network, travel_data.paths_to_e_nodes_future, travel_data.exact_positions, to=False
+    )
+    future_paths_json = TravelDataResponse.linestrings_to_collection(future_line_strings)
+
+    past_line_strings = TravelDataResponse.to_or_from_exact_positions(
+        travel_data.network, travel_data.paths_to_e_nodes_past, travel_data.exact_positions, to=True
+    )
+    past_paths_json = TravelDataResponse.linestrings_to_collection(past_line_strings)
+
+    # Verify both have valid features
+    assert len(future_paths_json["features"]) == len(travel_data.paths_to_e_nodes_future)
+    assert len(past_paths_json["features"]) == len(travel_data.paths_to_e_nodes_past)
+
+    # Verify that all features have valid LineString geometries
+    for feature in future_paths_json["features"]:
+        assert feature["geometry"]["type"] == "LineString"
+        assert len(feature["geometry"]["coordinates"]) >= 2
+
+    for feature in past_paths_json["features"]:
+        assert feature["geometry"]["type"] == "LineString"
+        assert len(feature["geometry"]["coordinates"]) >= 2

@@ -317,21 +317,33 @@ class RoadNetwork:
         Returns:
             LineString representing the path
         """
-        # if the path is a single node, return a LineString which is in fact a point
+        if not nodes:
+            raise ValueError("Empty list of nodes cannot be converted to a LineString")
         if len(nodes) == 1:
-            return LineString([self.node_to_point(nodes[0]), self.node_to_point(nodes[0])])
-        # if the path is a single edge, return the geometry of that edge
-        if len(nodes) == 2:
-            try:
-                return self.get_edge_geometry((nodes[0], nodes[1]))
-            except KeyError:
-                return LineString([self.node_to_point(nodes[0]), self.node_to_point(nodes[1])])
+            point = self.node_to_point(nodes[0])
+            return LineString([point, point])
+        else:
+            return cast(
+                LineString,
+                ops.linemerge([self.get_edge_geometry(edge) for edge in zip(nodes, nodes[1:])]),
+            )
 
-        # otherwise, return a LineString representing the path, need to cast to LineString since
-        # ops.linemerge returns a Union[LineString, MultiLineString]
+    def u_to_position_as_ls(self, edge_ref: EdgeRef) -> LineString:
+        if edge_ref.ec == 0.0:
+            u_point = self.node_to_point(edge_ref.u)
+            return LineString([u_point, u_point])
         return cast(
             LineString,
-            ops.linemerge([self.get_edge_geometry(edge) for edge in zip(nodes, nodes[1:])]),
+            ops.substring(self.get_edge_geometry((edge_ref.u, edge_ref.v)), 0.0, edge_ref.ec, normalized=True),
+        )
+
+    def v_to_position_as_ls(self, edge_ref: EdgeRef) -> LineString:
+        if edge_ref.ec == 1.0:
+            v_point = self.node_to_point(edge_ref.v)
+            return LineString([v_point, v_point])
+        return cast(
+            LineString,
+            ops.substring(self.get_edge_geometry((edge_ref.u, edge_ref.v)), edge_ref.ec, 1.0, normalized=True),
         )
 
     # return the geometry only but as a dataframe, not a series
@@ -369,7 +381,12 @@ class RoadNetwork:
             Union[str, Dict[str, object]]: Either the requested edge attribute (str)
             or the full edge data dictionary (Dict[str, object]).
         """
-        edge_data: dict[str, object] = max(self.graph.get_edge_data(edge[0], edge[1]).values(), key=edge_quantifier)
+        # Validate edge exists
+        raw_edge_data = self.graph.get_edge_data(edge[0], edge[1])
+        if raw_edge_data is None:
+            raise ValueError(f"Edge {edge} does not exist in the graph")
+
+        edge_data: dict[str, object] = max(raw_edge_data.values(), key=edge_quantifier)
 
         # if you are going to need the geometry, check if it is missing
         if (key is None or key == "geometry") and "geometry" not in edge_data.keys():
@@ -384,10 +401,10 @@ class RoadNetwork:
         # Cast to expected return type - caller is responsible for ensuring type safety
         return cast(str | dict[str, object], edge_data.get(key, default))
 
-    def get_edge_position_after_time(self, u: int, v: int, time_elapsed: int) -> Point:
+    def get_edge_position_after_time(self, u: int, v: int, time_elapsed: int) -> Position:
         # find the edge between the nodes with the minimum travel time
         edge_data: dict[str, object] = min(self.graph.get_edge_data(u, v).values(), key=lambda x: x["travel_time"])
         edge_travel_time: float = cast(float, edge_data["travel_time"])
         if not (0 <= time_elapsed <= edge_travel_time):
             raise ValueError(f"Time elapsed {time_elapsed} is out of bounds for edge {u}-{v}")
-        return self.edge_ref_to_point(EdgeRef(u, v, time_elapsed / edge_travel_time))
+        return self.create_position_from_edge_ref(EdgeRef(u, v, time_elapsed / edge_travel_time))

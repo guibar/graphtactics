@@ -363,9 +363,9 @@ export default defineComponent({
             this.vehicles = [];
             this.addToVehicles(response.data["vehicles"]);
             const travelData = response.data["travel_data"];
-            this.toNjoisGJ = travelData["paths_to_njois"];
+            this.toNjoisGJ = travelData["past_paths"];
             this.isochroneGJ = travelData["isochrone"];
-            this.fromNjoisGJ = travelData["paths_from_njois"];
+            this.fromNjoisGJ = travelData["future_paths"];
             this.affectationsGJ = response.data["affectations"];
             this.destinationsGJ = response.data["destinations"];
             this.stats_model = response.data["stats"]
