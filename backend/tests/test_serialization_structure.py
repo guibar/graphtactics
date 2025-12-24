@@ -78,10 +78,8 @@ def test_travel_data_future_paths_with_exact_positions(a_scenario):
     assert len(travel_data.exact_positions) > 0, "TravelData should have exact positions"
 
     # Call the method under test
-    line_strings = TravelDataResponse.to_or_from_exact_positions(
-        travel_data.network, travel_data.paths_to_e_nodes_future, travel_data.exact_positions, to=False
-    )
-    result = TravelDataResponse.linestrings_to_collection(line_strings)
+    lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
+    result = TravelDataResponse.linestrings_to_collection(lines_future)
 
     # Verify GeoJSON structure
     assert result["type"] == "FeatureCollection"
@@ -118,10 +116,8 @@ def test_travel_data_past_paths_with_exact_positions(a_scenario):
     assert len(travel_data.exact_positions) == len(travel_data.paths_to_e_nodes_future)
 
     # Call the method under test
-    line_strings = TravelDataResponse.to_or_from_exact_positions(
-        travel_data.network, travel_data.paths_to_e_nodes_past, travel_data.exact_positions, to=True
-    )
-    result = TravelDataResponse.linestrings_to_collection(line_strings)
+    lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
+    result = TravelDataResponse.linestrings_to_collection(lines_past)
 
     # Verify GeoJSON structure
     assert result["type"] == "FeatureCollection"
@@ -155,15 +151,9 @@ def test_travel_data_paths_geometry_merging(a_scenario):
     travel_data = a_scenario().adversary.travel_data
 
     # Get both future and past paths
-    future_line_strings = TravelDataResponse.to_or_from_exact_positions(
-        travel_data.network, travel_data.paths_to_e_nodes_future, travel_data.exact_positions, to=False
-    )
-    future_paths_json = TravelDataResponse.linestrings_to_collection(future_line_strings)
-
-    past_line_strings = TravelDataResponse.to_or_from_exact_positions(
-        travel_data.network, travel_data.paths_to_e_nodes_past, travel_data.exact_positions, to=True
-    )
-    past_paths_json = TravelDataResponse.linestrings_to_collection(past_line_strings)
+    lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
+    future_paths_json = TravelDataResponse.linestrings_to_collection(lines_future)
+    past_paths_json = TravelDataResponse.linestrings_to_collection(lines_past)
 
     # Verify both have valid features
     assert len(future_paths_json["features"]) == len(travel_data.paths_to_e_nodes_future)

@@ -91,7 +91,7 @@ class RoadNetwork:
         self.out_intersections_df: GeoDataFrame = out_intersections_df
         self.boundary: Polygon = boundary
         self.boundary_buff: Polygon = boundary_buff
-        self.central_point: Point = self.boundary.centroid
+        self.central_position: Position = self.create_position_from_point(self.boundary.centroid)
 
     # when the geometry is a simple line between 2 points, it doesn't seem to be stored e.g. (1390672272, 1390672213)
     def get_edge_geometry(self, edge: tuple[int, int]) -> LineString:
@@ -345,10 +345,6 @@ class RoadNetwork:
             LineString,
             ops.substring(self.get_edge_geometry((edge_ref.u, edge_ref.v)), edge_ref.ec, 1.0, normalized=True),
         )
-
-    # return the geometry only but as a dataframe, not a series
-    def get_escape_nodes_as_gdf(self) -> GeoDataFrame:
-        return self.nodes_df[self.nodes_df.index.isin(self.get_escape_nodes())].loc[:, ["geometry"]]
 
     # return the geometry only but as a dataframe, not a series
     def get_node_list_as_gdf(self, the_lst: list[int]):

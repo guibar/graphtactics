@@ -8,11 +8,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from geopandas import GeoDataFrame
-from shapely.geometry import Point
 
 from .config import AVAILABLE_NETWORKS
-from .dtos import PlanResponse, ScenarioDTO, VehicleResponse
+from .dtos import NetworkResponse, PlanResponse, ScenarioDTO, VehicleResponse
 from .planner import Planner
 from .road_network import RoadNetwork
 from .road_network_factory import RoadNetworkFactory
@@ -95,26 +93,16 @@ async def switch_network(network_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/init")
+@app.get("/init", response_model=NetworkResponse)
 async def get_init_data():
     """
     Get initial data for the map (boundaries, origin, escape points).
 
     Returns:
-        Dictionary with boundaries, origin coordinates, and escape points
+        NetworkResponse with boundaries, origin coordinates, and escape points
     """
     network: RoadNetwork = app.state.network
-    d_orig_pt: Point = network.central_point
-    boundaries_gdf = GeoDataFrame(
-        [{"geometry": network.boundary, "id": "inner"}, {"geometry": network.boundary_buff, "id": "outer"}],
-        crs="EPSG:4326",
-    )
-
-    return {
-        "boundaries": boundaries_gdf.__geo_interface__,
-        "origin_coords": {"lat": d_orig_pt.y, "lng": d_orig_pt.x},
-        "escape_points": network.get_escape_nodes_as_gdf().__geo_interface__,
-    }
+    return NetworkResponse.from_domain(network)
 
 
 @app.get("/random_vehicles", response_model=list[VehicleResponse])
