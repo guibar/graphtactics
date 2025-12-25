@@ -113,7 +113,7 @@ def test_travel_data_past_paths_with_exact_positions(a_scenario):
 
     # Verify that exact_positions is populated
     # TravelData should have exact positions
-    assert len(travel_data.exact_positions) == len(travel_data.paths_to_e_nodes_future)
+    assert len(travel_data.exact_positions) == len(travel_data.e_node_to_future_path)
 
     # Call the method under test
     lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
@@ -122,7 +122,7 @@ def test_travel_data_past_paths_with_exact_positions(a_scenario):
     # Verify GeoJSON structure
     assert result["type"] == "FeatureCollection"
     assert isinstance(result["features"], list)
-    assert len(result["features"]) == len(travel_data.paths_to_e_nodes_future)
+    assert len(result["features"]) == len(travel_data.e_node_to_past_path)
 
     # Track how many features have exact positions
     features_with_exact_pos = 0
@@ -156,8 +156,8 @@ def test_travel_data_paths_geometry_merging(a_scenario):
     past_paths_json = TravelDataResponse.linestrings_to_collection(lines_past)
 
     # Verify both have valid features
-    assert len(future_paths_json["features"]) == len(travel_data.paths_to_e_nodes_future)
-    assert len(past_paths_json["features"]) == len(travel_data.paths_to_e_nodes_past)
+    assert len(future_paths_json["features"]) == len(travel_data.e_node_to_future_path)
+    assert len(past_paths_json["features"]) == len(travel_data.e_node_to_past_path)
 
     # Verify that all features have valid LineString geometries
     for feature in future_paths_json["features"]:

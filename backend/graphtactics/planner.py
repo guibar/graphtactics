@@ -48,9 +48,9 @@ class Planner:
         if len(self.assignable_vids) == 0:
             return Plan(len(self.assignable_vids))
 
-        scores_n: list[int] = list(self.candidate_nodes.node_scores.values())
-        adv_paths_to_n: list[list[int]] = self.candidate_nodes.paths_as_indices
-        adv_times_to_n: list[int] = list(self.candidate_nodes.times_to_nodes.values())
+        node_scores: list[int] = list(self.candidate_nodes.node_scores.values())
+        adv_paths_to_nodes: list[list[int]] = self.candidate_nodes.paths_as_indices
+        adv_times_to_nodes: list[int] = list(self.candidate_nodes.times_to_nodes.values())
         times_v_n: list[list[int]] = Vehicle.get_time_matrix(
             {i: self.vehicles[i] for i in self.assignable_vids},
             self.candidate_nodes.get_candidate_nodes(),
@@ -64,38 +64,45 @@ class Planner:
         model = cp_model.CpModel()
 
         # IntVars are actually booleans (NewBoolVar) or constants (NewConstant)
-        veh_at_node: list[list[IntVar]] = [[]] * num_vehicles
-        for v_i in range(num_vehicles):
-            veh_at_node[v_i]: list[IntVar] = []  # pyright: ignore[reportInvalidTypeForm]
-            for n_j in range(num_nodes):
+        vehicule_node_matrix: list[list[IntVar]] = [[]] * num_vehicles
+        for vehicule_row_i in range(num_vehicles):
+            vehicule_node_matrix[vehicule_row_i] = []
+            for node_column_j in range(num_nodes):
                 # If our vehicle v_i can reach this node before the adversary, it's a boolean variable.
-                if adv_times_to_n[n_j] - times_v_n[v_i][n_j] - time_margin > 0:
-                    veh_at_node[v_i].append(model.NewBoolVar(f"x[v={v_i},n={n_j}]"))
+                if adv_times_to_nodes[node_column_j] - times_v_n[vehicule_row_i][node_column_j] - time_margin > 0:
+                    vehicule_node_matrix[vehicule_row_i].append(
+                        model.NewBoolVar(f"x[v={vehicule_row_i},n={node_column_j}]")
+                    )
                 # Otherwise, this assignment is excluded and we can set the value to constant 0
                 else:
-                    veh_at_node[v_i].append(model.NewConstant(0))
+                    vehicule_node_matrix[vehicule_row_i].append(model.NewConstant(0))
 
         # _____________ Constraints  ____________
 
         # C1: A vehicle is assigned to at most one node
-        for v_i in range(num_vehicles):
-            model.Add(sum(veh_at_node[v_i][n_j] for n_j in range(num_nodes)) <= 1)
+        for vehicule_row_i in range(num_vehicles):
+            model.Add(sum(vehicule_node_matrix[vehicule_row_i][n_j] for n_j in range(num_nodes)) <= 1)
 
         # C2: A node is assigned to at most one vehicle
         for n_j in range(num_nodes):
-            model.Add(sum(veh_at_node[v_i][n_j] for v_i in range(num_vehicles)) <= 1)
+            model.Add(sum(vehicule_node_matrix[v_i][n_j] for v_i in range(num_vehicles)) <= 1)
 
         # C3: The number of vehicles on a shortest path cannot be greater than 1.
-        for sp_index in range(len(adv_paths_to_n)):
+        for sp_index in range(len(adv_paths_to_nodes)):
             model.Add(
-                sum(veh_at_node[v_i][n_j] for v_i in range(num_vehicles) for n_j in adv_paths_to_n[sp_index]) <= 1
+                sum(
+                    vehicule_node_matrix[v_i][n_j]
+                    for v_i in range(num_vehicles)
+                    for n_j in adv_paths_to_nodes[sp_index]
+                )
+                <= 1
             )
 
         # _____________ End Constraints  ____________
 
         # Objective: maximize the sum of scores of assigned (monitored) nodes
         objective_terms = [
-            scores_n[n_j] * veh_at_node[v_i][n_j] for v_i in range(num_vehicles) for n_j in range(num_nodes)
+            node_scores[n_j] * vehicule_node_matrix[v_i][n_j] for v_i in range(num_vehicles) for n_j in range(num_nodes)
         ]
         model.Maximize(sum(objective_terms))
 
@@ -108,26 +115,26 @@ class Planner:
 
         if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
             logger.info(f"The total score of the plan is:  {solver.ObjectiveValue()}")
-            for v_i in range(num_vehicles):
+            for vehicule_row_i in range(num_vehicles):
                 for n_j in range(num_nodes):
-                    if solver.BooleanValue(veh_at_node[v_i][n_j]):
+                    if solver.BooleanValue(vehicule_node_matrix[vehicule_row_i][n_j]):
                         v_a = VehicleAssignment(
                             self.network,
-                            *convert_indices_to_ids(v_i, n_j),
-                            times_v_n[v_i][n_j],
-                            adv_times_to_n[n_j],
-                            scores_n[n_j],
+                            *convert_indices_to_ids(vehicule_row_i, n_j),
+                            times_v_n[vehicule_row_i][n_j],
+                            adv_times_to_nodes[n_j],
+                            node_scores[n_j],
                         )
                         plan.assignments.append(v_a)
                         logger.info(
-                            f"Vehicle {v_a.vehicle.id}({v_i}) must go to node {v_a.destination_node}({n_j}).\n"
-                            f"It will arrive {adv_times_to_n[n_j] - times_v_n[v_i][n_j]} seconds"
-                            f" before the adversary and contributes {scores_n[n_j]} points to the total score."
+                            f"Vehicle {v_a.vehicle.id}({vehicule_row_i}) must go to node {v_a.destination_node}({n_j}).\n"
+                            f"It will arrive {adv_times_to_nodes[n_j] - times_v_n[vehicule_row_i][n_j]} seconds"
+                            f" before the adversary and contributes {node_scores[n_j]} points to the total score."
                         )
-                        self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.ASSIGNED
+                        self.vehicles[self.assignable_vids[vehicule_row_i]].status = VehicleStatus.ASSIGNED
                         break
                 else:
-                    self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.UNASSIGNED
+                    self.vehicles[self.assignable_vids[vehicule_row_i]].status = VehicleStatus.UNASSIGNED
         else:
             raise Exception("No plan was found")
 

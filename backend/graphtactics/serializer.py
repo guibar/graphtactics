@@ -128,11 +128,11 @@ class Serializer:
             [
                 [
                     en,
-                    self.network.to_linestring(travel_data.paths_to_e_nodes_future[en])
-                    if travel_data.paths_to_e_nodes_future[en]
+                    self.network.to_linestring(travel_data.e_node_to_future_path[en])
+                    if travel_data.e_node_to_future_path[en]
                     else LineString(),
                 ]
-                for en in travel_data.paths_to_e_nodes_future.keys()
+                for en in travel_data.e_node_to_future_path.keys()
             ],
             columns=Index(["en", "geometry"]),
             crs="EPSG:4326",
@@ -143,9 +143,9 @@ class Serializer:
             [
                 [
                     en,
-                    self.network.to_linestring(travel_data.paths_to_e_nodes_past[en]),
+                    self.network.to_linestring(travel_data.e_node_to_past_path[en]),
                 ]
-                for en in travel_data.paths_to_e_nodes_past.keys()
+                for en in travel_data.e_node_to_past_path.keys()
             ],
             columns=Index(["en", "geometry"]),
             crs="EPSG:4326",
@@ -157,10 +157,10 @@ class Serializer:
                 [
                     en,
                     self.network.to_linestring(
-                        travel_data.paths_to_e_nodes_past[en] + travel_data.paths_to_e_nodes_future[en]
+                        travel_data.e_node_to_past_path[en] + travel_data.e_node_to_future_path[en]
                     ),
                 ]
-                for en in travel_data.paths_to_e_nodes_past.keys()
+                for en in travel_data.e_node_to_past_path.keys()
             ],
             columns=Index(["en", "geometry"]),
             crs="EPSG:4326",

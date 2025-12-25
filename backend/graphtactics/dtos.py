@@ -181,7 +181,7 @@ class TravelDataResponse(BaseModel):
         lines_past: list[LineString] = []
         lines_future: list[LineString] = []
         """Helper method to get linestrings without converting to GeoJSON."""
-        for en, nodes in travel_data.paths_to_e_nodes_past.items():
+        for en, nodes in travel_data.e_node_to_past_path.items():
             line_past: LineString = travel_data.network.to_linestring(nodes)
             if isinstance(travel_data.exact_positions[en], Position):
                 position: Position = cast(Position, travel_data.exact_positions[en])
@@ -192,7 +192,7 @@ class TravelDataResponse(BaseModel):
                 line_past = LineString(list(line_past.coords) + [(point.x, point.y)])
             lines_past.append(line_past)
 
-        for en, nodes in travel_data.paths_to_e_nodes_future.items():
+        for en, nodes in travel_data.e_node_to_future_path.items():
             if isinstance(travel_data.exact_positions[en], Position):
                 line_future: LineString = travel_data.network.to_linestring(nodes)
                 position = cast(Position, travel_data.exact_positions[en])

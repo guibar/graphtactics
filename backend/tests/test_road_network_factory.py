@@ -239,6 +239,8 @@ class TestCreate:
 
     def test_download_and_instantiate_from_github(self, tmp_path):
         """Test downloading files from GitHub and instantiating network (integration test)."""
+
+        network_name = "noailles"
         # Create factory with default GitHub settings
         factory = RoadNetworkFactory()
 
@@ -246,18 +248,18 @@ class TestCreate:
         factory.cache_dir = tmp_path
 
         # Verify cache is empty initially
-        graphml_path = tmp_path / "60.graphml"
-        gpkg_path = tmp_path / "60.gpkg"
+        graphml_path = tmp_path / f"{network_name}.graphml"
+        gpkg_path = tmp_path / f"{network_name}.gpkg"
         assert not graphml_path.exists()
         assert not gpkg_path.exists()
 
         # Download and create network
-        network = factory.create("60")
+        network = factory.create(network_name)
 
         # Assert: Network was created successfully
         assert network is not None
         assert isinstance(network, RoadNetwork)
-        assert network.name == "60"
+        assert network.name == network_name
 
         # Assert: Files were downloaded to cache
         assert graphml_path.exists()
@@ -266,12 +268,12 @@ class TestCreate:
         # Assert: Network has expected attributes
         assert network.graph is not None
         assert isinstance(network.graph, MultiDiGraph)
-        assert len(network.graph.nodes()) == 7599
-        assert len(network.graph.edges()) == 14995
+        assert len(network.graph.nodes()) == 202
+        assert len(network.graph.edges()) == 432
         assert network.nodes_df is not None
-        assert len(network.nodes_df) == 7599
+        assert len(network.nodes_df) == 202
         assert network.edges_df is not None
-        assert len(network.edges_df) == 14995
+        assert len(network.edges_df) == 432
 
     def test_create_network_from_scratch(self, tmp_path):
         """Test creating files from boundary (integration test)."""
