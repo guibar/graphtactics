@@ -68,9 +68,12 @@ class Adversary:
         return {
             "nb_escape_nodes": len(self.network.get_escape_nodes()),
             "nb_njois": len(self.travel_data.get_njois()),
-            "nb_candidate_nodes": len(self.candidate_nodes.get_candidate_nodes()),
+            "nb_candidate_nodes": len(self.candidate_nodes.node_osmids),
             "max_possible_score": sum(
-                [self.candidate_nodes.node_scores[njoi] for njoi in self.travel_data.get_njois()]
+                [
+                    self.candidate_nodes.node_scores[self.candidate_nodes.osmid_to_seq_idx[njoi]]
+                    for njoi in self.travel_data.get_njois()
+                ]
             ),
         }
 
@@ -255,8 +258,9 @@ class CandidateNodes:
         times_to_nodes (dict[int, int]): Time to reach each candidate node.
     """
 
-    LAST_EDGE_FACTOR: int = 40
+    LAST_EDGE_FACTOR: int = 80
     TIME_FACTOR: int = 1
+    TIME_CONSTANT: int = 600  # 10 minutes gives a neutral time score
 
     def __init__(self, travel_data: TravelData):
         """Initialize candidate nodes from travel data.
@@ -268,54 +272,36 @@ class CandidateNodes:
         Args:
             travel_data: Travel data containing paths and times to escape nodes.
         """
-        # {osmid: score}, the values function as an ordered set
-        self.node_scores: dict[int, int] = {}
+
+        self.node_scores: list[int] = []
+        self.node_osmids: list[int] = []
         # {osmid: index}
-        self.node_lookup: dict[int, int] = {}
+        self.osmid_to_seq_idx: dict[int, int] = {}
         # paths as numbers from 0 to len(candidate_nodes)
-        self.paths_as_indices: list[list[int]] = []
+        self.paths_as_seq_indices: list[list[int]] = []
         # {osmid: time}
-        self.times_to_nodes: dict[int, int] = {}
+        self.times_to_nodes: list[int] = []
 
         for e_node in travel_data.e_node_to_future_path.keys():
-            path_as_indices = []
-            for n_index, n_osmid in enumerate(travel_data.e_node_to_future_path[e_node]):
+            path_as_seq_indices = []
+            for n_osmid in travel_data.e_node_to_future_path[e_node]:
                 # If this node has never been encountered, we create entries for it in the dictionaries and lists
-                if n_osmid not in self.node_lookup.keys():
-                    # We include this node in node_lookup, associating its osmid to an incremental index.
-                    self.node_lookup[n_osmid] = len(self.node_lookup)
-
-                    # we penalize the node based on its distance from the NJOI, this means all else being equal,
-                    # we prioritize a node closer to the NJOI
-                    # actually this should be a function of the time waited rather than the index
-                    self.node_scores[n_osmid] = -n_index * self.TIME_FACTOR
+                if n_osmid not in self.osmid_to_seq_idx.keys():
+                    # We include this node in node_lookup, and increase the lists accordingly
+                    self.osmid_to_seq_idx[n_osmid] = len(self.osmid_to_seq_idx)
+                    self.node_osmids.append(n_osmid)
+                    self.node_scores.append(0)
 
                     # add the time to this node in the appropriate order
-                    self.times_to_nodes[n_osmid] = travel_data.times_to_nodes[n_osmid]
+                    self.times_to_nodes.append(travel_data.times_to_nodes[n_osmid])
 
-                # if a node appear again, we add the score corresponding to the last edge to the escape node
-                # but we don't subtract the penalty corresponding to the node's position
-                self.node_scores[n_osmid] += travel_data.get_last_edge_value(e_node) * self.LAST_EDGE_FACTOR
+                # the score is based on the highway value of the last edge to the escape node
+                # and the time to reach the node
+                self.node_scores[self.osmid_to_seq_idx[n_osmid]] += (
+                    travel_data.get_last_edge_value(e_node) * self.LAST_EDGE_FACTOR
+                    + (self.TIME_CONSTANT - travel_data.times_to_nodes[n_osmid]) * self.TIME_FACTOR
+                )
 
                 # we create a version of the path that refers to nodes by their sequential index
-                path_as_indices.append(self.node_lookup[n_osmid])
-            self.paths_as_indices.append(path_as_indices)
-
-    def get_candidate_node(self, index: int) -> int:
-        """Get the node ID for a candidate at a specific index.
-
-        Args:
-            index: The index of the candidate node in the lookup.
-
-        Returns:
-            The OSM node ID at the specified index.
-        """
-        return list(self.node_lookup.keys())[index]
-
-    def get_candidate_nodes(self) -> list[int]:
-        """Get all candidate node IDs.
-
-        Returns:
-            List of all OSM node IDs that are candidates for interception.
-        """
-        return list(self.node_lookup.keys())
+                path_as_seq_indices.append(self.osmid_to_seq_idx[n_osmid])
+            self.paths_as_seq_indices.append(path_as_seq_indices)

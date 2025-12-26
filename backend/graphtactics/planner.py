@@ -48,12 +48,13 @@ class Planner:
         if len(self.assignable_vids) == 0:
             return Plan(len(self.assignable_vids))
 
-        node_scores: list[int] = list(self.candidate_nodes.node_scores.values())
-        adv_paths_to_nodes: list[list[int]] = self.candidate_nodes.paths_as_indices
-        adv_times_to_nodes: list[int] = list(self.candidate_nodes.times_to_nodes.values())
+        node_scores: list[int] = self.candidate_nodes.node_scores
+        adv_paths_to_nodes: list[list[int]] = self.candidate_nodes.paths_as_seq_indices
+        adv_times_to_nodes: list[int] = self.candidate_nodes.times_to_nodes
+
         times_v_n: list[list[int]] = Vehicle.get_time_matrix(
             {i: self.vehicles[i] for i in self.assignable_vids},
-            self.candidate_nodes.get_candidate_nodes(),
+            self.candidate_nodes.node_osmids,
         )
         num_vehicles: int = len(times_v_n)
         num_nodes: int = len(times_v_n[0])
@@ -110,9 +111,6 @@ class Planner:
         solver.parameters.max_time_in_seconds = MAX_TIME_TO_SOLVE
         status = solver.Solve(model)
 
-        def convert_indices_to_ids(v_i: int, n_j: int) -> tuple[Vehicle, int]:
-            return self.vehicles[self.assignable_vids[v_i]], self.candidate_nodes.get_candidate_node(n_j)
-
         if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
             logger.info(f"The total score of the plan is:  {solver.ObjectiveValue()}")
             for vehicule_row_i in range(num_vehicles):
@@ -120,7 +118,8 @@ class Planner:
                     if solver.BooleanValue(vehicule_node_matrix[vehicule_row_i][n_j]):
                         v_a = VehicleAssignment(
                             self.network,
-                            *convert_indices_to_ids(vehicule_row_i, n_j),
+                            self.vehicles[self.assignable_vids[vehicule_row_i]],
+                            self.candidate_nodes.node_osmids[n_j],
                             times_v_n[vehicule_row_i][n_j],
                             adv_times_to_nodes[n_j],
                             node_scores[n_j],

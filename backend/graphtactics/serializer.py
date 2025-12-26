@@ -169,8 +169,8 @@ class Serializer:
     def save_candidate_nodes(self) -> None:
         if not self.scenario:
             return
-        node_ids = list(self.scenario.adversary.candidate_nodes.node_scores.keys())
-        scores = list(self.scenario.adversary.candidate_nodes.node_scores.values())
+        node_ids = self.scenario.adversary.candidate_nodes.node_osmids
+        scores = self.scenario.adversary.candidate_nodes.node_scores
         nodes_gdf = self.network.get_node_list_as_gdf(node_ids)
         nodes_gdf["score"] = scores
         nodes_gdf.to_file(self.filepath, layer="candidate_nodes", driver="GPKG")

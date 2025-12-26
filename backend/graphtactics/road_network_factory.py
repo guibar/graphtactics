@@ -47,8 +47,10 @@ network_dir: str = os.path.join(data_dir, "networks")
 osmnx.settings.cache_folder = os.path.join(data_dir, "osmnx_cache")
 osmnx.settings.use_cache = True
 
+BUFFER_IN_METERS: int = 2000
 
-def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = 2000) -> Polygon:
+
+def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = BUFFER_IN_METERS) -> Polygon:
     """
     Create a buffered version of a polygon by expanding it by a specified distance.
     For instance, a rectangle will result in a larger rectangle with rounded corners.
@@ -60,7 +62,7 @@ def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = 2000) -> Polyg
     Args:
         polygon: A Shapely Polygon in lat/long (EPSG:4326) coordinates
         buffer_in_meters: Distance in meters to expand the polygon in all directions.
-                         Defaults to 2000 meters (2 km)
+                         Defaults to BUFFER_IN_METERS
 
     Returns:
         A new Polygon (in lat/long) expanded by the specified distance in all directions
