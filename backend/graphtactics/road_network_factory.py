@@ -47,7 +47,7 @@ network_dir: str = os.path.join(data_dir, "networks")
 osmnx.settings.cache_folder = os.path.join(data_dir, "osmnx_cache")
 osmnx.settings.use_cache = True
 
-BUFFER_IN_METERS: int = 2000
+BUFFER_IN_METERS: int = 5000
 
 
 def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = BUFFER_IN_METERS) -> Polygon:
@@ -426,7 +426,7 @@ class RoadNetworkFactory:
         boundary_buff = get_buffered_poly(boundary)
         logger.info(f"Downloading OSM data within the polygon defined by {boundary.bounds}.")
         # custom filter to get only major highways suitable for motor vehicles
-        major_highways = (
+        main_roads_filter = (
             '["highway"~"tertiary|tertiary_link|secondary|secondary_link|primary|primary_link|'
             'trunk|trunk_link|motorway|motorway_link"]["motor_vehicle"!~"no"]'
             '["motorcar"!~"no"]["service"!~"alley|driveway|emergency_access|parking|'
@@ -438,7 +438,7 @@ class RoadNetworkFactory:
             simplify=True,
             retain_all=False,
             truncate_by_edge=True,
-            custom_filter=major_highways,
+            custom_filter=main_roads_filter,
         )
         logger.info(f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
         # keep only the largest connected component
