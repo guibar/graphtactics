@@ -32,16 +32,35 @@ class PointDTO(BaseModel):
         """Convert to Position domain object."""
         return Point(self.lng, self.lat)  # Shapely uses (x, y) = (lng, lat)
 
+    @classmethod
+    def from_domain(cls, point: Point) -> "PointDTO":
+        """Convert to PointDTO from Position domain object."""
+        return cls(lat=point.y, lng=point.x)
+
 
 class VehicleDTO(BaseModel):
-    """DTO for Vehicle input."""
+    """DTO for Vehicle - handles both input and output serialization."""
 
     id: int = Field(..., description="Unique vehicle identifier")
-    lat_lng: PointDTO
+    coordinates: PointDTO
+    visible: bool | None = None
+    tooltip: str | None = None
+    status: int | None = None
 
     def to_domain(self, network: RoadNetwork) -> Vehicle:
-        """Convert to Vehicle domain object."""
-        return Vehicle.from_point(network, self.id, self.lat_lng.to_domain(), on_node=False)
+        """Convert from DTO to Vehicle domain object (for input)."""
+        return Vehicle.from_point(network, self.id, self.coordinates.to_domain(), on_node=False)
+
+    @classmethod
+    def from_domain(cls, vehicle: Vehicle) -> "VehicleDTO":
+        """Convert from Vehicle domain object to DTO (for output)."""
+        return cls(
+            id=vehicle.id,
+            coordinates=PointDTO(lat=vehicle.position.point.y, lng=vehicle.position.point.x),
+            visible=True,
+            tooltip=f"VID : {vehicle.id}",
+            status=vehicle.status.value,
+        )
 
 
 class ScenarioDTO(BaseModel):
@@ -58,14 +77,11 @@ class ScenarioDTO(BaseModel):
         return Scenario(network, self.origin_coords.to_domain(), datetime.now() - td, vehicles, td)
 
 
-# Response DTOs (for serializing domain objects to JSON)
-
-
-class NetworkResponse(BaseModel):
-    """Response DTO for network initialization data."""
+class NetworkDTO(BaseModel):
+    """DTO for network initialization data."""
 
     boundaries: dict[str, Any] = Field(..., description="GeoJSON FeatureCollection of boundary polygons")
-    origin_coords: dict[str, float] = Field(..., description="Central point coordinates (lat/lng)")
+    origin_coords: PointDTO
     escape_points: dict[str, Any] = Field(..., description="GeoJSON FeatureCollection of escape node points")
 
     @staticmethod
@@ -117,7 +133,7 @@ class NetworkResponse(BaseModel):
         return to_feature_collection(features)
 
     @classmethod
-    def from_domain(cls, network: RoadNetwork) -> "NetworkResponse":
+    def from_domain(cls, network: RoadNetwork) -> "NetworkDTO":
         """Create response DTO from RoadNetwork domain object.
 
         Args:
@@ -130,33 +146,12 @@ class NetworkResponse(BaseModel):
 
         return cls(
             boundaries=cls.boundaries_to_geojson(network.boundary, network.boundary_buff),
-            origin_coords={"lat": central_point.y, "lng": central_point.x},
+            origin_coords=PointDTO.from_domain(central_point),
             escape_points=cls.escape_nodes_to_geojson(network),
         )
 
 
-class VehicleResponse(BaseModel):
-    """Response DTO for Vehicle - serializes domain Vehicle to JSON."""
-
-    id: int
-    position: PointDTO
-    visible: bool
-    tooltip: str
-    status: int
-
-    @classmethod
-    def from_domain(cls, vehicle: Vehicle) -> "VehicleResponse":
-        """Create response DTO from domain Vehicle."""
-        return cls(
-            id=vehicle.id,
-            position=PointDTO(lat=vehicle.position.point.y, lng=vehicle.position.point.x),
-            visible=True,
-            tooltip=f"VID : {vehicle.id}",
-            status=vehicle.status.value,
-        )
-
-
-class TravelDataResponse(BaseModel):
+class TravelDataDTO(BaseModel):
     """Response DTO for TravelData - serializes graph analysis to JSON."""
 
     past_paths: dict
@@ -164,7 +159,7 @@ class TravelDataResponse(BaseModel):
     future_paths: dict
 
     @classmethod
-    def from_domain(cls, travel_data: TravelData) -> "TravelDataResponse":
+    def from_domain(cls, travel_data: TravelData) -> "TravelDataDTO":
         past_linestrings, future_linestrings = cls.past_and_future_paths_as_line_strings(travel_data)
 
         # Use past paths to create the isochrone polygon
@@ -220,16 +215,16 @@ class TravelDataResponse(BaseModel):
         return to_feature_collection(features)
 
 
-class PlanResponse(BaseModel):
+class PlanDTO(BaseModel):
     origin: list[float]
-    vehicles: list[VehicleResponse]
-    travel_data: TravelDataResponse
+    vehicles: list[VehicleDTO]
+    travel_data: TravelDataDTO
     affectations: dict
     destinations: dict
     stats: dict
 
     @classmethod
-    def from_domain(cls, scenario: Scenario, plan: Plan) -> "PlanResponse":
+    def from_domain(cls, scenario: Scenario, plan: Plan) -> "PlanDTO":
         """
         Serialize the interception plan to a JSON-compatible dictionary.
 
@@ -243,8 +238,8 @@ class PlanResponse(BaseModel):
                 scenario.adversary.lkp_position.point.y,
                 scenario.adversary.lkp_position.point.x,
             ],
-            vehicles=[VehicleResponse.from_domain(v) for v in scenario.vehicles.values()],
-            travel_data=TravelDataResponse.from_domain(scenario.adversary.travel_data),
+            vehicles=[VehicleDTO.from_domain(v) for v in scenario.vehicles.values()],
+            travel_data=TravelDataDTO.from_domain(scenario.adversary.travel_data),
             affectations=cls._plan_assignments_to_geojson(plan),
             destinations=cls._plan_destinations_to_geojson(plan),
             stats={**scenario.adversary.get_stats(), **plan.get_stats()},  # merge stats

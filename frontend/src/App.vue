@@ -86,7 +86,7 @@ P
             :key="v.id"
             :visible="v.visible"
             :draggable="!results && !loading"
-            v-model:lat-lng="v.position"
+            v-model:lat-lng="v.coordinates"
             :icon="v.status == 0?carAssignableIcon:v.status==4?carAssignedIcon:carUnassignedIcon"
             @click="removeVehicle(v)"
         >
@@ -131,7 +131,7 @@ import { AxiosResponse } from "axios";
 
 interface Vehicle {
   id: number;
-  position: L.LatLng;
+  coordinates: L.LatLng;
   visible: boolean;
   tooltip: string;
   status: number;
@@ -350,7 +350,7 @@ export default defineComponent({
         .post(`generate`, {
           vehicles: this.vehicles.map(v => ({
             id: v.id,
-            lat_lng: { lat: v.position.lat, lng: v.position.lng }
+            coordinates: { lat: v.coordinates.lat, lng: v.coordinates.lng }
           })),
           origin_coords: { lat: this.originCoords.lat, lng: this.originCoords.lng },
           time_delta: this.mins*60 + this.secs
@@ -395,7 +395,7 @@ export default defineComponent({
       if (!this.results && !this.loading) {
         this.vehicles.push({
           id: this.vid,
-          position: e.latlng,
+          coordinates: e.latlng,
           visible: true,
           tooltip: this.$t('app.tooltips.vid', { id: this.vid }),
           status: 0
@@ -415,7 +415,7 @@ export default defineComponent({
       for(var i = 0; i < vehicles_json.length; i++) {
         this.vehicles.push(
           { id: vehicles_json[i].id,
-            position: L.latLng(vehicles_json[i].position),
+            coordinates: L.latLng(vehicles_json[i].coordinates),
             visible: true,
             tooltip: this.$t('app.tooltips.vid', { id: vehicles_json[i].id }),
             status: vehicles_json[i].status

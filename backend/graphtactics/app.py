@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import AVAILABLE_NETWORKS
-from .dtos import NetworkResponse, PlanResponse, ScenarioDTO, VehicleResponse
+from .dtos import NetworkDTO, PlanDTO, ScenarioDTO, VehicleDTO
 from .planner import Planner
 from .road_network import RoadNetwork
 from .road_network_factory import RoadNetworkFactory
@@ -93,7 +93,7 @@ async def switch_network(network_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/init", response_model=NetworkResponse)
+@app.get("/init", response_model=NetworkDTO)
 async def get_init_data():
     """
     Get initial data for the map (boundaries, origin, escape points).
@@ -102,10 +102,10 @@ async def get_init_data():
         NetworkResponse with boundaries, origin coordinates, and escape points
     """
     network: RoadNetwork = app.state.network
-    return NetworkResponse.from_domain(network)
+    return NetworkDTO.from_domain(network)
 
 
-@app.get("/random_vehicles", response_model=list[VehicleResponse])
+@app.get("/random_vehicles", response_model=list[VehicleDTO])
 async def get_random_vehicles(nb_vh: int = 5):
     """
     Generate random vehicles on the network.
@@ -118,7 +118,7 @@ async def get_random_vehicles(nb_vh: int = 5):
     """
     network = app.state.network
     vehicles = Vehicle.get_random_vehicles(network, nb_vh)
-    return [VehicleResponse.from_domain(v) for v in vehicles.values()]
+    return [VehicleDTO.from_domain(v) for v in vehicles.values()]
 
 
 @app.post("/generate")
@@ -145,7 +145,7 @@ async def generate_plan(scenario_dto: ScenarioDTO):
             serializer = Serializer(app.state.network, scenario, plan)
             serializer.save()
 
-        return PlanResponse.from_domain(scenario, plan)
+        return PlanDTO.from_domain(scenario, plan)
 
     except Exception as e:
         logger.error(f"Error generating plan: {e}", exc_info=True)
