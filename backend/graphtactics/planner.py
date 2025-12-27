@@ -31,10 +31,8 @@ class Planner:
                 )
                 vehicle.status = VehicleStatus.TOO_CLOSE_TO_LKP
             else:
-                # this is ugly the status gets set in set_travel_times if not enough points are reachable
                 vehicle.set_travel_times()
-                if vehicle.status == VehicleStatus.ASSIGNABLE:
-                    self.assignable_vids.append(vehicle.id)
+                self.assignable_vids.append(vehicle.id)
 
     def plan_interception(self, time_margin: int = 0) -> "Plan":
         """
@@ -126,8 +124,8 @@ class Planner:
                         )
                         plan.assignments.append(v_a)
                         logger.info(
-                            f"Vehicle {v_a.vehicle.id}({vehicule_row_i}) must go to node {v_a.destination_node}({n_j}).\n"
-                            f"It will arrive {adv_times_to_nodes[n_j] - times_v_n[vehicule_row_i][n_j]} seconds"
+                            f"Vehicle {v_a.vehicle.id}({vehicule_row_i}) must go to node {v_a.destination_node}({n_j})."
+                            f"\nIt should arrive {adv_times_to_nodes[n_j] - times_v_n[vehicule_row_i][n_j]} seconds"
                             f" before the adversary and contributes {node_scores[n_j]} points to the total score."
                         )
                         self.vehicles[self.assignable_vids[vehicule_row_i]].status = VehicleStatus.ASSIGNED

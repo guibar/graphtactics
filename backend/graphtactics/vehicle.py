@@ -16,10 +16,9 @@ MIN_REACHABLE_NODES_RATIO_FOR_ASSIGNABLE = 0.5  # Default value, adjust as neede
 class VehicleStatus(Enum):
     ASSIGNABLE = 0  # Vehicle can take part in the plan
     TOO_CLOSE_TO_LKP = 1  # Vehicle is too close to the last known position
-    CANNOT_REACH_GRAPH = 2  # Vehicle is somewhere poorly connected to the rest of the network
-    UNAVAILABLE = 3  # Not used for now but a vehicle might not be available
-    ASSIGNED = 4  # Vehicle that was ASSIGNABLE has been assigned
-    UNASSIGNED = 5  # Vehicle that was ASSIGNABLE has NOT been assigned
+    UNAVAILABLE = 2  # Not used for now but a vehicle might not be available
+    ASSIGNED = 3  # Vehicle that was ASSIGNABLE has been assigned
+    UNASSIGNED = 4  # Vehicle that was ASSIGNABLE has NOT been assigned
 
 
 # @dataclass
@@ -45,15 +44,6 @@ class Vehicle:
 
     def set_travel_times(self) -> None:
         self.times_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from_position(self.position)
-        self.status = VehicleStatus.ASSIGNABLE
-        if len(self.times_to_nodes) < len(self.network.graph) * MIN_REACHABLE_NODES_RATIO_FOR_ASSIGNABLE:
-            # If the vehicle can reach less than 50% of the network, it is not assigned to the plan
-            # Should document why this can happen
-            logger.debug(
-                f"Vehicle {self.id} seems to have reduced access to the network and "
-                + "its status is set to CANNOT_REACH_GRAPH"
-            )
-            self.status = VehicleStatus.CANNOT_REACH_GRAPH
 
     @classmethod
     def get_time_matrix(cls, vehicles: dict[int, "Vehicle"], candidate_nodes: list[int]) -> list[list[int]]:
