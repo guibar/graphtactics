@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from graphtactics.dtos import PlanResponse
+from graphtactics.dtos import PlanDTO
 from graphtactics.planner import Planner
 from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.scenario import Scenario
@@ -29,7 +29,7 @@ def test_route(road_network_60c):
     serializer.save()
     planner = Planner(road_network_60c, scenario)
     plan = planner.plan_interception()
-    payload = PlanResponse.from_domain(scenario, plan).model_dump()
+    payload = PlanDTO.from_domain(scenario, plan).model_dump()
     assert "origin" in payload
     assert "vehicles" in payload
     assert "affectations" in payload

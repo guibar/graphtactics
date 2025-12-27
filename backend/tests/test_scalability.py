@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from shapely import Point
 
-from graphtactics.dtos import PlanResponse
+from graphtactics.dtos import PlanDTO
 from graphtactics.planner import Planner
 from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.scenario import Scenario
@@ -36,7 +36,7 @@ def test_dispositif_10_vehicles(road_network_60):
     serializer.save()
     planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
-    payload = PlanResponse.from_domain(scenario, plan).model_dump()
+    payload = PlanDTO.from_domain(scenario, plan).model_dump()
     assert "stats" in payload
 
 
@@ -55,7 +55,7 @@ def test_dispositif_50_vehicles(road_network_60):
     serializer.save()
     planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
-    payload = PlanResponse.from_domain(scenario, plan).model_dump()
+    payload = PlanDTO.from_domain(scenario, plan).model_dump()
     assert "stats" in payload
 
 
@@ -74,5 +74,5 @@ def test_dispositif_100_vehicles(road_network_60):
     serializer.save()
     planner = Planner(road_network_60, scenario)
     plan = planner.plan_interception()
-    payload = PlanResponse.from_domain(scenario, plan).model_dump()
+    payload = PlanDTO.from_domain(scenario, plan).model_dump()
     assert "stats" in payload

@@ -34,9 +34,9 @@ def test_random_vehicles(client):
     assert len(json_data) == 5
     for jd in json_data:
         assert "id" in jd
-        assert "position" in jd
-        assert "lat" in jd["position"]
-        assert "lng" in jd["position"]
+        assert "coordinates" in jd
+        assert "lat" in jd["coordinates"]
+        assert "lng" in jd["coordinates"]
 
 
 def test_from_json_vehicles(network):

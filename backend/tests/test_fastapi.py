@@ -94,9 +94,9 @@ class TestRandomVehicles:
         # Check vehicle structure
         vehicle = vehicles[0]
         assert "id" in vehicle
-        assert "position" in vehicle
-        assert "lat" in vehicle["position"]
-        assert "lng" in vehicle["position"]
+        assert "coordinates" in vehicle
+        assert "lat" in vehicle["coordinates"]
+        assert "lng" in vehicle["coordinates"]
 
     def test_random_vehicles_custom_count(self, client):
         """Test generating random vehicles with custom count."""
@@ -120,7 +120,8 @@ class TestGeneratePlan:
             "origin_coords": {"lat": 49.35, "lng": 2.08},
             "time_delta": 300,  # seconds
             "vehicles": [
-                {"id": v["id"], "lat_lng": {"lat": v["position"]["lat"], "lng": v["position"]["lng"]}} for v in vehicles
+                {"id": v["id"], "coordinates": {"lat": v["coordinates"]["lat"], "lng": v["coordinates"]["lng"]}}
+                for v in vehicles
             ],
         }
 

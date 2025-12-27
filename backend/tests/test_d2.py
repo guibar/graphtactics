@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from shapely.geometry import Point
 
-from graphtactics.dtos import PlanResponse
+from graphtactics.dtos import PlanDTO
 from graphtactics.planner import Planner
 from graphtactics.road_network import RoadNetwork
 from graphtactics.road_network_factory import RoadNetworkFactory
@@ -31,7 +31,7 @@ class TestD2:
         repo.save()
         planner = Planner(road_network_d2, scenario)
         plan = planner.plan_interception()
-        payload = PlanResponse.from_domain(scenario, plan).model_dump()
+        payload = PlanDTO.from_domain(scenario, plan).model_dump()
         assert "affectations" in payload
 
     def test_run_d2_2(self, road_network_d2):
@@ -48,7 +48,7 @@ class TestD2:
         repo.save()
         planner = Planner(road_network_d2, scenario)
         plan = planner.plan_interception()
-        payload = PlanResponse.from_domain(scenario, plan).model_dump()
+        payload = PlanDTO.from_domain(scenario, plan).model_dump()
         assert "affectations" in payload
 
     def test_point(self, road_network_d2):
@@ -70,14 +70,14 @@ class TestD2:
         repo.save()
         planner = Planner(road_network_d2, scenario)
         plan = planner.plan_interception()
-        payload = PlanResponse.from_domain(scenario, plan).model_dump()
+        payload = PlanDTO.from_domain(scenario, plan).model_dump()
         assert "affectations" in payload
 
     def test_from_gpkg(self, road_network_d2):
         scenario = Serializer.load_scenario(road_network_d2, "d2_123")
         planner = Planner(road_network_d2, scenario)
         plan = planner.plan_interception()
-        payload = PlanResponse.from_domain(scenario, plan).model_dump()
+        payload = PlanDTO.from_domain(scenario, plan).model_dump()
         assert "affectations" in payload
 
 

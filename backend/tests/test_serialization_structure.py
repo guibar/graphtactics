@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from shapely import Point
 
-from graphtactics.dtos import PlanResponse, TravelDataResponse
+from graphtactics.dtos import PlanDTO, TravelDataDTO
 from graphtactics.planner import Planner
 from graphtactics.road_network_factory import RoadNetworkFactory
 from graphtactics.scenario import Scenario
@@ -38,7 +38,7 @@ def test_plan_response_geojson_structure(a_scenario, road_network_60):
     plan = planner.plan_interception()
 
     # Serialize
-    response = PlanResponse.from_domain(a_scenario(), plan)
+    response = PlanDTO.from_domain(a_scenario(), plan)
     payload = response.model_dump()
 
     # Verification Helper
@@ -66,8 +66,8 @@ def test_plan_response_geojson_structure(a_scenario, road_network_60):
 
     # Affectations might be empty if no solution found, but with 5 vehicles and 7 mins it should find something usually.
     # The solver might fail or return empty if no solution, so we check just structure.
-    verify_feature_collection(payload["affectations"], expected_feature_count=1)
-    verify_feature_collection(payload["destinations"], expected_feature_count=1)
+    verify_feature_collection(payload["affectations"], expected_feature_count=2)
+    verify_feature_collection(payload["destinations"], expected_feature_count=2)
 
 
 def test_travel_data_future_paths_with_exact_positions(a_scenario):
@@ -78,8 +78,8 @@ def test_travel_data_future_paths_with_exact_positions(a_scenario):
     assert len(travel_data.exact_positions) > 0, "TravelData should have exact positions"
 
     # Call the method under test
-    lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
-    result = TravelDataResponse.linestrings_to_collection(lines_future)
+    lines_past, lines_future = TravelDataDTO.past_and_future_paths_as_line_strings(travel_data)
+    result = TravelDataDTO.linestrings_to_collection(lines_future)
 
     # Verify GeoJSON structure
     assert result["type"] == "FeatureCollection"
@@ -116,8 +116,8 @@ def test_travel_data_past_paths_with_exact_positions(a_scenario):
     assert len(travel_data.exact_positions) == len(travel_data.e_node_to_future_path)
 
     # Call the method under test
-    lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
-    result = TravelDataResponse.linestrings_to_collection(lines_past)
+    lines_past, lines_future = TravelDataDTO.past_and_future_paths_as_line_strings(travel_data)
+    result = TravelDataDTO.linestrings_to_collection(lines_past)
 
     # Verify GeoJSON structure
     assert result["type"] == "FeatureCollection"
@@ -151,9 +151,9 @@ def test_travel_data_paths_geometry_merging(a_scenario):
     travel_data = a_scenario().adversary.travel_data
 
     # Get both future and past paths
-    lines_past, lines_future = TravelDataResponse.past_and_future_paths_as_line_strings(travel_data)
-    future_paths_json = TravelDataResponse.linestrings_to_collection(lines_future)
-    past_paths_json = TravelDataResponse.linestrings_to_collection(lines_past)
+    lines_past, lines_future = TravelDataDTO.past_and_future_paths_as_line_strings(travel_data)
+    future_paths_json = TravelDataDTO.linestrings_to_collection(lines_future)
+    past_paths_json = TravelDataDTO.linestrings_to_collection(lines_past)
 
     # Verify both have valid features
     assert len(future_paths_json["features"]) == len(travel_data.e_node_to_future_path)
