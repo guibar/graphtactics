@@ -41,7 +41,7 @@ class VehicleDTO(BaseModel):
 
     def to_domain(self, network: RoadNetwork) -> Vehicle:
         """Convert to Vehicle domain object."""
-        return Vehicle.from_point(network, self.id, self.lat_lng.to_domain(), on_node=True)
+        return Vehicle.from_point(network, self.id, self.lat_lng.to_domain(), on_node=False)
 
 
 class ScenarioDTO(BaseModel):
@@ -178,26 +178,29 @@ class TravelDataResponse(BaseModel):
 
     @staticmethod
     def past_and_future_paths_as_line_strings(travel_data: TravelData) -> tuple[list[LineString], list[LineString]]:
+        """Helper method to get linestrings without converting to GeoJSON."""
         lines_past: list[LineString] = []
         lines_future: list[LineString] = []
-        """Helper method to get linestrings without converting to GeoJSON."""
         for en, nodes in travel_data.e_node_to_past_path.items():
-            line_past: LineString = travel_data.network.to_linestring(nodes)
+            # the exact position is a Position object
             if isinstance(travel_data.exact_positions[en], Position):
-                position: Position = cast(Position, travel_data.exact_positions[en])
-                from_u_geom = travel_data.network.u_to_position_as_ls(position.to_edge_ref())
-                line_past = cast(LineString, ops.linemerge([line_past, from_u_geom]))
+                line_past = travel_data.network.to_linestring(
+                    nodes,
+                    pos_before=travel_data.lkp_position,
+                    pos_after=cast(Position, travel_data.exact_positions[en]),
+                )
+            # the exact position is a Point object probably not on the network,
+            # we just plot a straight line from the escape_node to the point
             else:
                 point: Point = cast(Point, travel_data.exact_positions[en])
-                line_past = LineString(list(line_past.coords) + [(point.x, point.y)])
+                line_past = LineString(list(travel_data.network.to_linestring(nodes).coords) + [(point.x, point.y)])
             lines_past.append(line_past)
 
         for en, nodes in travel_data.e_node_to_future_path.items():
             if isinstance(travel_data.exact_positions[en], Position):
-                line_future: LineString = travel_data.network.to_linestring(nodes)
-                position = cast(Position, travel_data.exact_positions[en])
-                to_v_geom = travel_data.network.v_to_position_as_ls(position.to_edge_ref())
-                line_future = cast(LineString, ops.linemerge([to_v_geom, line_future]))
+                line_future = travel_data.network.to_linestring(
+                    nodes, pos_before=cast(Position, travel_data.exact_positions[en])
+                )
                 lines_future.append(line_future)
             else:  # in this case, there is no future line
                 assert not nodes

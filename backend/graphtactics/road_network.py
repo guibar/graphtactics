@@ -7,7 +7,7 @@ from networkx import MultiDiGraph, single_source_dijkstra
 from numpy.random import default_rng
 from osmnx import settings, shortest_path
 from osmnx.distance import nearest_edges, nearest_nodes
-from pandas import DataFrame, Index
+from pandas import DataFrame
 from shapely import ops
 from shapely.geometry import LineString, Point, Polygon
 
@@ -255,6 +255,62 @@ class RoadNetwork:
         times_int = {node: int(time) for node, time in times_float.items()}
         return times_int, paths
 
+    def get_times_and_paths_from_position(self, position: Position) -> tuple[dict[int, int], dict[int, list[int]]]:
+        """
+        Compute shortest paths from a position on an edge to all reachable nodes.
+
+        For one-way edges, only paths via position.v are considered.
+        For bidirectional edges, paths via both position.u and position.v are compared.
+
+        Args:
+            position: Starting position on an edge
+
+        Returns:
+            Tuple of (times_dict, paths_dict) where:
+            - times_dict maps node -> total travel time (int)
+            - paths_dict maps node -> list of nodes in shortest path
+        """
+        fastest_edge_data = min(
+            self.graph.get_edge_data(position.u, position.v).values(), key=lambda x: x["travel_time"]
+        )
+
+        if fastest_edge_data["oneway"] == "yes":
+            times_float, paths = cast(
+                tuple[dict[int, float], dict[int, list[int]]],
+                single_source_dijkstra(self.graph, position.v, weight="travel_time", target=None),
+            )
+            time_to_v = self.get_time_from_position_to_v(position)
+            times_int = {node: int(time + time_to_v) for node, time in times_float.items()}
+            return times_int, paths
+
+        else:
+            # Compute paths from both endpoints
+            times_from_u, paths_from_u = cast(
+                tuple[dict[int, float], dict[int, list[int]]],
+                single_source_dijkstra(self.graph, position.u, weight="travel_time", target=None),
+            )
+            times_from_v, paths_from_v = cast(
+                tuple[dict[int, float], dict[int, list[int]]],
+                single_source_dijkstra(self.graph, position.v, weight="travel_time", target=None),
+            )
+
+            time_to_u = self.get_time_from_position_to_u(position)
+            time_to_v = self.get_time_from_position_to_v(position)
+
+            # Combine results, choosing the better path for each node
+            all_nodes_reachable = set(times_from_u.keys()) | set(times_from_v.keys())
+            times_int: dict[int, int] = {}
+            paths: dict[int, list[int]] = {}
+
+            for node in all_nodes_reachable:
+                t_u = times_from_u.get(node, float("inf")) + time_to_u
+                t_v = times_from_v.get(node, float("inf")) + time_to_v
+
+                times_int[node] = int(min(t_u, t_v))
+                paths[node] = paths_from_u.get(node, []) if t_u < t_v else paths_from_v.get(node, [])
+
+            return times_int, paths
+
     # Position factory methods
     def create_position_from_point(self, point: Point, on_node: bool = False) -> "Position":
         """
@@ -308,7 +364,18 @@ class RoadNetwork:
         point = self.node_to_point(u)
         return Position(init_point=point, point=point, u=edge_ref.u, v=edge_ref.v, ec=edge_ref.ec)
 
-    def to_linestring(self, nodes: list[int]) -> LineString:
+    def _edges_to_ls(self, nodes: list[int]) -> LineString:
+        if not nodes:
+            raise ValueError("Empty list of nodes cannot be converted to a LineString")
+        if len(nodes) == 1:
+            point = self.node_to_point(nodes[0])
+            return LineString([point, point])
+        else:
+            return cast(LineString, ops.linemerge([self.get_edge_geometry(edge) for edge in zip(nodes, nodes[1:])]))
+
+    def to_linestring(
+        self, nodes: list[int], pos_before: Position | None = None, pos_after: Position | None = None
+    ) -> LineString:
         """
         Get a single LineString representing the path between a list of nodes.
 
@@ -317,46 +384,52 @@ class RoadNetwork:
         Returns:
             LineString representing the path
         """
-        if not nodes:
-            raise ValueError("Empty list of nodes cannot be converted to a LineString")
-        if len(nodes) == 1:
-            point = self.node_to_point(nodes[0])
-            return LineString([point, point])
-        else:
-            return cast(
-                LineString,
-                ops.linemerge([self.get_edge_geometry(edge) for edge in zip(nodes, nodes[1:])]),
-            )
+        line_pieces: list[LineString] = []
 
-    def u_to_position_as_ls(self, edge_ref: EdgeRef) -> LineString:
-        if edge_ref.ec == 0.0:
-            u_point = self.node_to_point(edge_ref.u)
+        # Add segment before nodes if pos_before is provided
+        if pos_before:
+            if pos_before.u == nodes[0]:
+                line_pieces.append(self.u_to_position_as_ls(pos_before))
+            elif pos_before.v == nodes[0]:
+                line_pieces.append(self.v_to_position_as_ls(pos_before))
+            else:
+                raise ValueError(f"Position: {pos_before} is not compatible with nodes: {nodes}")
+
+        # Add the main node path
+        line_pieces.append(self._edges_to_ls(nodes))
+
+        # Add segment after nodes if pos_after is provided
+        if pos_after:
+            if pos_after.u == nodes[-1]:
+                line_pieces.append(self.u_to_position_as_ls(pos_after))
+            elif pos_after.v == nodes[-1]:
+                line_pieces.append(self.v_to_position_as_ls(pos_after))
+            else:
+                raise ValueError(f"Position: {pos_after} is not compatible with nodes: {nodes}")
+
+        return cast(LineString, ops.linemerge(line_pieces))
+
+    def u_to_position_as_ls(self, position: Position) -> LineString:
+        if position.ec == 0.0:
+            u_point = self.node_to_point(position.u)
             return LineString([u_point, u_point])
         return cast(
             LineString,
-            ops.substring(self.get_edge_geometry((edge_ref.u, edge_ref.v)), 0.0, edge_ref.ec, normalized=True),
+            ops.substring(self.get_edge_geometry((position.u, position.v)), 0.0, position.ec, normalized=True),
         )
 
-    def v_to_position_as_ls(self, edge_ref: EdgeRef) -> LineString:
-        if edge_ref.ec == 1.0:
-            v_point = self.node_to_point(edge_ref.v)
+    def v_to_position_as_ls(self, position: Position) -> LineString:
+        if position.ec == 1.0:
+            v_point = self.node_to_point(position.v)
             return LineString([v_point, v_point])
         return cast(
             LineString,
-            ops.substring(self.get_edge_geometry((edge_ref.u, edge_ref.v)), edge_ref.ec, 1.0, normalized=True),
+            ops.substring(self.get_edge_geometry((position.u, position.v)), position.ec, 1.0, normalized=True),
         )
 
     # return the geometry only but as a dataframe, not a series
     def get_node_list_as_gdf(self, the_lst: list[int]):
         return self.nodes_df.loc[the_lst, ["geometry"]]
-
-    def get_paths_as_small_gdf(self, path_list: list[list[int]]) -> GeoDataFrame:
-        tuple_set: set[tuple[int, int]] = {tup for path in path_list for tup in zip(path, path[1:])}
-        return GeoDataFrame(
-            [[self.to_linestring(list(tup))] for tup in tuple_set],
-            crs="EPSG:4326",
-            columns=Index(["geometry"]),
-        )
 
     # this allows us to treat the MultiDiGraph as a Digraph. Instead of having to put a [0] after everything
     def get_edge_data(self, edge: tuple[int, int], key=None, default=None) -> str | dict[str, object]:
@@ -404,3 +477,16 @@ class RoadNetwork:
         if not (0 <= time_elapsed <= edge_travel_time):
             raise ValueError(f"Time elapsed {time_elapsed} is out of bounds for edge {u}-{v}")
         return self.create_position_from_edge_ref(EdgeRef(u, v, time_elapsed / edge_travel_time))
+
+    def get_edge_travel_time(self, u: int, v: int) -> int:
+        """Get edge data for the edge with minimum travel time between u and v."""
+        fastest_edge_data = min(self.graph.get_edge_data(u, v).values(), key=lambda x: x["travel_time"])
+        return int(fastest_edge_data["travel_time"])
+
+    def get_time_from_position_to_u(self, position: Position) -> int:
+        edge_data = self.get_edge_travel_time(position.u, position.v)
+        return int(edge_data * position.ec)
+
+    def get_time_from_position_to_v(self, position: Position) -> int:
+        edge_data = self.get_edge_travel_time(position.u, position.v)
+        return int(edge_data * (1 - position.ec))

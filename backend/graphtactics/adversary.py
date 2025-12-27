@@ -45,7 +45,7 @@ class Adversary:
             ValueError: If the last known point is not within the road network boundary.
         """
         self.network: RoadNetwork = network
-        self.lkp_position: Position = self.network.create_position_from_point(lk_point, on_node=True)
+        self.lkp_position: Position = self.network.create_position_from_point(lk_point, on_node=False)
         if not self.network.has_in_boundary(self.lkp_position):
             raise ValueError(
                 f"(Latitude: {lk_point.y:.3f}, Longitude: {lk_point.x:.3f}) is not a valid position"
@@ -105,9 +105,10 @@ class TravelData:
                                                     value = ids of nodes already traversed to reach en.
         e_node_to_future_path (dict[int, list[int]]): key = en (escape node id);
                                                       value = ids of nodes to be traversed to reach en.
-        exact_positions (dict[int, Position | Point]): This is either:
-                 - the precise position on the edge connecting the last visited node to the first upcoming node to reach en.
-                 - a Point if the adversary is too far out and can't be sure to be placed on the network.
+        exact_positions (dict[int, Position | Point]): key = en (escape node id);
+                                                       value = either:
+            - the position on the edge connecting the last visited node to the first upcoming node to reach en.
+            - a Point if the adversary is too far out and can't be sure to be placed on the network.
     """
 
     def __init__(self, network: RoadNetwork, lkp_position: Position, time_elapsed: timedelta):
@@ -120,29 +121,26 @@ class TravelData:
         """
         self.network = network
         self.lkp_position = lkp_position
-
+        self.time_elapsed = time_elapsed
         self.times_to_nodes: dict[int, int] = {}  # 10 -> 10s to reach the node; -10 -> node was reached 10s ago
         self.paths_to_nodes: dict[int, list[int]] = {}
         self.e_node_to_past_path: dict[int, list[int]] = {}  # only the first escape node on a path has an entry here
         self.e_node_to_future_path: dict[int, list[int]] = {}  # only the first escape node on a path has an entry here
         self.exact_positions: dict[int, Position | Point] = {}  # adversary exact position on its way to an escape node
 
-        self.set_travel_times_and_paths(time_elapsed)
+        self.set_travel_times_and_paths()
         self.set_past_and_future_paths()
 
-    def set_travel_times_and_paths(self, time_elapsed: timedelta) -> None:
+    def set_travel_times_and_paths(self) -> None:
         """Calculate travel times and paths from the last known position to all nodes.
 
         Computes the time to reach each node from the adversary's last known position,
         adjusted for the elapsed time. Negative times indicate nodes that would have been reached in the past.
-
-        Args:
-            time_elapsed: Time elapsed since the adversary was last seen.
         """
-        times_from_lkp_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from(self.lkp_position.u)
+        times_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from_position(self.lkp_position)
 
         # subtract the time that has passed from the time it takes to reach each node
-        self.times_to_nodes = {k: v - int(time_elapsed.total_seconds()) for k, v in times_from_lkp_to_nodes.items()}
+        self.times_to_nodes = {k: v - int(self.time_elapsed.total_seconds()) for k, v in times_to_nodes.items()}
 
     def set_past_and_future_paths(self):
         """Split paths to escape nodes into past and future segments.
@@ -156,9 +154,9 @@ class TravelData:
         2. Identifies the first node on the path that has not been reached yet (NJOI = Node just outside Isochrone).
             All nodes after this one are interception candidate nodes.
         3. Splits the path into past (already visited nodes) and future (yet to visit nodes) segments.
-        4. Calculates the exact position on the edge connecting past and future nodes. If the escape node has already been
-        passed, we extrapolate a geographical position but we don't try to place it on the network as we might not have
-        that part of the network in our graph.
+        4. Calculates the exact position on the edge connecting past and future nodes.
+            If the escape node has already been passed, we extrapolate a geographical position but we don't try
+            to place it on the network as we might not have that part of the network in our graph.
 
         """
 

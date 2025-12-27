@@ -44,7 +44,7 @@ class Vehicle:
         )
 
     def set_travel_times(self) -> None:
-        self.times_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from(self.position.u)
+        self.times_to_nodes, self.paths_to_nodes = self.network.get_times_and_paths_from_position(self.position)
         self.status = VehicleStatus.ASSIGNABLE
         if len(self.times_to_nodes) < len(self.network.graph) * MIN_REACHABLE_NODES_RATIO_FOR_ASSIGNABLE:
             # If the vehicle can reach less than 50% of the network, it is not assigned to the plan
@@ -61,7 +61,7 @@ class Vehicle:
 
     @classmethod
     def get_random_vehicles(
-        cls, network: RoadNetwork, nb_vehicles: int, on_node=True, seed=None
+        cls, network: RoadNetwork, nb_vehicles: int, on_node=False, seed=None
     ) -> dict[int, "Vehicle"]:
         rng = default_rng(seed)
         return {
@@ -89,7 +89,9 @@ class VehicleAssignment:
         self.time_to_dest: int = time_to_dest
         self.adv_time_to_dest: int = adv_time_to_dest
         self.score = score
-        self.trajectory_geom: LineString = network.to_linestring(self.vehicle.paths_to_nodes[destination_node])
+        self.trajectory_geom: LineString = network.to_linestring(
+            self.vehicle.paths_to_nodes[destination_node], pos_before=self.vehicle.position
+        )
 
     def __repr__(self):
         return (

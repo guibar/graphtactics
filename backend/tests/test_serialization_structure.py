@@ -62,12 +62,12 @@ def test_plan_response_geojson_structure(a_scenario, road_network_60):
     # Isochrone is now a single Feature, not a FeatureCollection
     assert travel_data["isochrone"]["type"] == "Feature"
     assert "geometry" in travel_data["isochrone"]
-    verify_feature_collection(travel_data["future_paths"], expected_feature_count=72)
+    verify_feature_collection(travel_data["future_paths"], expected_feature_count=57)
 
     # Affectations might be empty if no solution found, but with 5 vehicles and 7 mins it should find something usually.
     # The solver might fail or return empty if no solution, so we check just structure.
-    verify_feature_collection(payload["affectations"], expected_feature_count=2)
-    verify_feature_collection(payload["destinations"], expected_feature_count=2)
+    verify_feature_collection(payload["affectations"], expected_feature_count=1)
+    verify_feature_collection(payload["destinations"], expected_feature_count=1)
 
 
 def test_travel_data_future_paths_with_exact_positions(a_scenario):
