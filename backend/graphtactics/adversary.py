@@ -1,7 +1,9 @@
 import logging
 from bisect import bisect_right
 from datetime import datetime, timedelta
+from math import atan2
 
+from shapely import Polygon
 from shapely.geometry import Point
 
 from .position import Position
@@ -240,6 +242,26 @@ class TravelData:
     def get_njois(self) -> set[int]:
         """Return the set of all first nodes in paths_to_e_nodes_future."""
         return {path[0] for path in self.e_node_to_future_path.values() if path}
+
+    def get_isochrone(self) -> Polygon:
+        # no need to sort if there are less than 3 points
+        point_list: list[Point] = [p.point if isinstance(p, Position) else p for p in self.exact_positions.values()]
+
+        # find the approximate center of the polygon
+        centre_x, centre_y = (
+            sum(p.x for p in point_list) / len(point_list),
+            sum(p.y for p in point_list) / len(point_list),
+        )
+
+        # sort the points by angle from the center
+        point_list.sort(key=lambda p: atan2(p.y - centre_y, p.x - centre_x))
+        centre: Point = Point(
+            sum(p.x for p in point_list) / len(point_list),
+            sum(p.y for p in point_list) / len(point_list),
+        )
+        # sort the points by angle from the center
+        point_list.sort(key=lambda p: atan2(p.y - centre.y, p.x - centre.x))
+        return Polygon(point_list)
 
 
 class CandidateNodes:

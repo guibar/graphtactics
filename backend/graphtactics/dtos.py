@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, cast
 
 from pydantic import BaseModel, Field
-from shapely import Polygon, ops, unary_union
+from shapely import Polygon
 from shapely.geometry import LineString, Point, mapping
 
 from .adversary import TravelData
@@ -168,7 +168,7 @@ class TravelDataResponse(BaseModel):
         past_linestrings, future_linestrings = cls.past_and_future_paths_as_line_strings(travel_data)
 
         # Use past paths to create the isochrone polygon
-        isochrone_polygon = cast(Polygon, unary_union(past_linestrings).convex_hull)
+        isochrone_polygon = travel_data.get_isochrone()
 
         return cls(
             past_paths=cls.linestrings_to_collection(past_linestrings),
