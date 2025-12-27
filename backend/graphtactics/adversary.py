@@ -319,7 +319,7 @@ class CandidateNodes:
                 # and the time to reach the node
                 self.node_scores[self.osmid_to_seq_idx[n_osmid]] += (
                     travel_data.get_last_edge_value(e_node) * self.LAST_EDGE_FACTOR
-                    + (self.TIME_CONSTANT - travel_data.times_to_nodes[n_osmid]) * self.TIME_FACTOR
+                    + max(self.TIME_CONSTANT - travel_data.times_to_nodes[n_osmid], 0) * self.TIME_FACTOR
                 )
 
                 # we create a version of the path that refers to nodes by their sequential index
