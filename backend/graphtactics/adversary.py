@@ -1,7 +1,7 @@
 import logging
 from bisect import bisect_right
 from datetime import datetime, timedelta
-from math import atan2
+from math import atan2, exp
 
 from shapely import Polygon
 from shapely.geometry import Point
@@ -279,8 +279,8 @@ class CandidateNodes:
     """
 
     LAST_EDGE_FACTOR: int = 80
-    TIME_FACTOR: int = 1
-    TIME_CONSTANT: int = 600  # 10 minutes gives a neutral time score
+    TIME_FACTOR: int = 480
+    TIME_CONSTANT: int = 900  # 10 minutes gives a neutral time score
 
     def __init__(self, travel_data: TravelData):
         """Initialize candidate nodes from travel data.
@@ -317,9 +317,10 @@ class CandidateNodes:
 
                 # the score is based on the highway value of the last edge to the escape node
                 # and the time to reach the node
-                self.node_scores[self.osmid_to_seq_idx[n_osmid]] += (
-                    travel_data.get_last_edge_value(e_node) * self.LAST_EDGE_FACTOR
-                    + max(self.TIME_CONSTANT - travel_data.times_to_nodes[n_osmid], 0) * self.TIME_FACTOR
+                self.node_scores[self.osmid_to_seq_idx[n_osmid]] += travel_data.get_last_edge_value(
+                    e_node
+                ) * self.LAST_EDGE_FACTOR + int(
+                    exp(-travel_data.times_to_nodes[n_osmid] / self.TIME_CONSTANT) * self.TIME_FACTOR
                 )
 
                 # we create a version of the path that refers to nodes by their sequential index
