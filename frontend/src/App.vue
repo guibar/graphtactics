@@ -87,7 +87,7 @@ P
             :visible="v.visible"
             :draggable="!results && !loading"
             v-model:lat-lng="v.coordinates"
-            :icon="v.status == 0?carAssignableIcon:v.status==4?carAssignedIcon:carUnassignedIcon"
+            :icon="v.status == 0?carAssignableIcon:v.status==3?carAssignedIcon:carUnassignedIcon"
             @click="removeVehicle(v)"
         >
           <l-tooltip :content="v.tooltip" />
