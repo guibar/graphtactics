@@ -137,6 +137,12 @@ class Planner:
 
         plan.solution_score = solver.ObjectiveValue()
 
+        for e_n in self.network.get_escape_nodes():
+            for assignment in plan.assignments:
+                if assignment.destination_node in self.travel_data.paths_to_nodes[e_n]:
+                    break
+            else:
+                plan.uncontrolled_nodes.append(e_n)
         return plan
 
 
@@ -145,6 +151,7 @@ class Plan:
         self.assignments: list[VehicleAssignment] = []
         self.solution_score: float = 0
         self.nb_assignable_vehicles: int = nb_assignable_vehicles
+        self.uncontrolled_nodes: list[int] = []
 
     def get_stats(self):
         """

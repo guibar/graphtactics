@@ -102,7 +102,7 @@ class NetworkDTO(BaseModel):
                 {
                     "type": "Feature",
                     "geometry": mapping(point),
-                    "properties": {},
+                    "properties": {"osmid": node_id},
                 }
             )
         return to_feature_collection(features)
@@ -222,6 +222,7 @@ class PlanDTO(BaseModel):
     affectations: dict
     destinations: dict
     stats: dict
+    controlled_nodes: list[int]
 
     @classmethod
     def from_domain(cls, scenario: Scenario, plan: Plan) -> "PlanDTO":
@@ -243,6 +244,7 @@ class PlanDTO(BaseModel):
             affectations=cls._plan_assignments_to_geojson(plan),
             destinations=cls._plan_destinations_to_geojson(plan),
             stats={**scenario.adversary.get_stats(), **plan.get_stats()},  # merge stats
+            controlled_nodes=plan.uncontrolled_nodes,
         )
 
     @staticmethod
