@@ -77,7 +77,8 @@ P
           :icon="originIcon" ref="orig_marker"></l-marker>
 
       <l-layer-group name="Points de Fuite" layer-type="overlay" ref="escape_points_lg">
-        <l-geo-json v-if="escapePointsGJ" :geojson="escapePointsGJ" :options="escapeOptions"></l-geo-json>
+        <l-geo-json v-if="controlledEscapeGJ" :geojson="controlledEscapeGJ" :options="controlledEscapeOptions"></l-geo-json>
+        <l-geo-json v-if="uncontrolledEscapeGJ" :geojson="uncontrolledEscapeGJ" :options="uncontrolledEscapeOptions"></l-geo-json>
       </l-layer-group>
 
       <l-layer-group name="Vehicules" layer-type="overlay">
@@ -161,7 +162,9 @@ export default defineComponent({
       availableNetworks: [] as string[],
       // Layers
       boundariesGJ: null as any,
-      escapePointsGJ: null as any,
+      originalEscapeGJ: null as any,  // Store original escape nodes data
+      controlledEscapeGJ: null as any,
+      uncontrolledEscapeGJ: null as any,
       affectationsGJ: null as any,
       destinationsGJ: null as any,
       isochroneGJ: null as any,
@@ -213,10 +216,17 @@ export default defineComponent({
   },
 
   computed: {
-    escapeOptions(): any {
+    controlledEscapeOptions(): any {
       return {
         pointToLayer: function (feature: any, latlng: L.LatLng) {
-          return L.marker(latlng, {icon: myIcons["endpoint"]});
+          return L.marker(latlng, {icon: myIcons["en-controlled"]});
+        }
+      }
+    },
+    uncontrolledEscapeOptions(): any {
+      return {
+        pointToLayer: function (feature: any, latlng: L.LatLng) {
+          return L.marker(latlng, {icon: myIcons["en-uncontrolled"]});
         }
       }
     },
@@ -334,7 +344,10 @@ export default defineComponent({
               const tempGeo = L.geoJSON(data["boundaries"]);
               this.bounds = tempGeo.getBounds();
 
-              this.escapePointsGJ = data["escape_points"];
+              // Store original escape nodes and by default, all are controlled
+              this.originalEscapeGJ = data["escape_points"];
+              this.controlledEscapeGJ = data["escape_points"];
+              this.uncontrolledEscapeGJ = null;
               this.originCoords = data["origin_coords"];
             }
           }).catch((error: any) => {
@@ -369,6 +382,10 @@ export default defineComponent({
             this.affectationsGJ = response.data["affectations"];
             this.destinationsGJ = response.data["destinations"];
             this.stats_model = response.data["stats"]
+            
+            // Split escape nodes into controlled and uncontrolled
+            const uncontrolledNodeIds = response.data["controlled_nodes"]; // Will be renamed to uncontrolled_nodes in backend
+            this.splitEscapeNodes(uncontrolledNodeIds);
             
             // Visibility is handled by v-if="...GJ" in the template. 
             // Since we just set the data, they will appear.
@@ -439,9 +456,37 @@ export default defineComponent({
       this.stats_model = null
       this.outputsContent = ""
       
+      // Reset all escape nodes to controlled
+      this.controlledEscapeGJ = this.originalEscapeGJ;
+      this.uncontrolledEscapeGJ = null;
+      
       this.vehicles.forEach(function (v) {
         v.status = 0;
       });
+    },
+
+    splitEscapeNodes: function (uncontrolledNodeIds: number[]) {
+      // Get all escape node features from the original data
+      const allFeatures = this.controlledEscapeGJ?.features || [];
+      
+      // Split into controlled and uncontrolled
+      const controlled = allFeatures.filter((f: any) => 
+        !uncontrolledNodeIds.includes(f.properties.osmid)
+      );
+      const uncontrolled = allFeatures.filter((f: any) => 
+        uncontrolledNodeIds.includes(f.properties.osmid)
+      );
+      
+      // Update the GeoJSON objects
+      this.controlledEscapeGJ = controlled.length > 0 ? {
+        type: "FeatureCollection",
+        features: controlled
+      } : null;
+      
+      this.uncontrolledEscapeGJ = uncontrolled.length > 0 ? {
+        type: "FeatureCollection",
+        features: uncontrolled
+      } : null;
     },
 
     clearAll: function () {

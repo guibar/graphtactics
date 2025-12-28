@@ -40,9 +40,14 @@ export const myIcons = {
         iconAnchor: [13, 27],
         popupAnchor: [1, -24]
     }),
-    'endpoint': icon({
-        iconUrl: require("@/assets/pin.png"),
-        iconAnchor: [20, 40],
-        iconSize: [40, 40],
+    'en-controlled': icon({
+        iconUrl: require("@/assets/pin-green.png"),
+        iconAnchor: [15, 30],
+        iconSize: [30, 30],
+    }),
+    'en-uncontrolled': icon({
+        iconUrl: require("@/assets/pin-red.png"),
+        iconAnchor: [15, 30],
+        iconSize: [30, 30],
     }),
 };
