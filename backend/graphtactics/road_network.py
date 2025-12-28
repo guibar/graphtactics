@@ -389,9 +389,13 @@ class RoadNetwork:
         # Add segment before nodes if pos_before is provided
         if pos_before:
             if pos_before.u == nodes[0]:
-                line_pieces.append(self.u_to_position_as_ls(pos_before))
+                # u_to_position_as_ls goes from u to position, but we need position to u
+                # so we reverse the coordinates
+                line_pieces.append(self.position_to_u_as_ls(pos_before))
             elif pos_before.v == nodes[0]:
-                line_pieces.append(self.v_to_position_as_ls(pos_before))
+                # v_to_position_as_ls goes from v to position, but we need position to v
+                # so we reverse the coordinates
+                line_pieces.append(self.position_to_v_as_ls(pos_before))
             else:
                 raise ValueError(f"Position: {pos_before} is not compatible with nodes: {nodes}")
 
@@ -401,24 +405,24 @@ class RoadNetwork:
         # Add segment after nodes if pos_after is provided
         if pos_after:
             if pos_after.u == nodes[-1]:
-                line_pieces.append(self.u_to_position_as_ls(pos_after))
+                line_pieces.append(self.position_to_u_as_ls(pos_after))
             elif pos_after.v == nodes[-1]:
-                line_pieces.append(self.v_to_position_as_ls(pos_after))
+                line_pieces.append(self.position_to_v_as_ls(pos_after))
             else:
                 raise ValueError(f"Position: {pos_after} is not compatible with nodes: {nodes}")
 
         return cast(LineString, ops.linemerge(line_pieces))
 
-    def u_to_position_as_ls(self, position: Position) -> LineString:
+    def position_to_u_as_ls(self, position: Position) -> LineString:
         if position.ec == 0.0:
             u_point = self.node_to_point(position.u)
             return LineString([u_point, u_point])
         return cast(
             LineString,
-            ops.substring(self.get_edge_geometry((position.u, position.v)), 0.0, position.ec, normalized=True),
+            ops.substring(self.get_edge_geometry((position.u, position.v)), position.ec, 0.0, normalized=True),
         )
 
-    def v_to_position_as_ls(self, position: Position) -> LineString:
+    def position_to_v_as_ls(self, position: Position) -> LineString:
         if position.ec == 1.0:
             v_point = self.node_to_point(position.v)
             return LineString([v_point, v_point])
