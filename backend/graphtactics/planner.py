@@ -1,167 +1,240 @@
-import logging
+"""
+Optimization engine for vehicle interception planning.
 
-from geopandas import GeoDataFrame
+This module uses OR-Tools (Constraint Programming) to solve the multi-vehicle
+assignment problem. The goal is to assign police vehicles to specific road
+network nodes to intercept an adversary, maximizing the total interception
+score while respecting time constraints and path coverage rules.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
 from ortools.sat.python import cp_model
 from ortools.sat.python.cp_model import IntVar
-from pandas import Index
 
-from .adversary import TravelData
-from .road_network import RoadNetwork
+from graphtactics.road_network import RoadNetwork
+
+from .config import MAX_SPEED_M_PER_SECOND
+from .escape_model import EscapeModel
 from .scenario import Scenario
+from .utils import distance
 from .vehicle import Vehicle, VehicleAssignment, VehicleStatus
 
+# Maximum time (in seconds) allowed for the solver to find a solution
 MAX_TIME_TO_SOLVE = 30
-
 logger = logging.getLogger(__name__)
 
 
 class Planner:
-    def __init__(self, network: RoadNetwork, scenario: Scenario):
-        self.network = network
-        self.vehicles: dict[int, Vehicle] = scenario.vehicles
-        self.assignable_vids: list[int] = []  # maps an int from 0 to (number of assignable -1) vehicles to vid
-        self.travel_data: TravelData = scenario.adversary.travel_data
-        self.candidate_nodes = scenario.adversary.candidate_nodes
+    """Orchestrates the optimization process to assign vehicles to interception points.
 
+    Attributes:
+        network: The underlying road network.
+        vehicles: Dictionary of all available vehicles in the scenario.
+        assignable_vids: IDs of vehicles that passed the proximity filter.
+        time_margin: Safety buffer (seconds) the vehicle must arrive before the adversary.
+        escape_model: The computed model of potential adversary behavior.
+        plan: The resulting interception plan maximizing the total interception score.
+    """
+
+    def __init__(self, network: RoadNetwork, scenario: Scenario):
+        """Initialize the planner with scenario data.
+
+        Args:
+            network: RoadNetwork instance.
+            scenario: The current tactical situation (adversary LKP + vehicle locations).
+        """
+        self.network: RoadNetwork = network
+        self.vehicles: dict[int, Vehicle] = scenario.vehicles
+        self.assignable_vids: list[int] = []
+        self.time_margin: int = scenario.time_margin
+        self.escape_model: EscapeModel = scenario.adversary.escape_model
+        self.plan: Plan | None = None
+
+    def plan_interception(self) -> Plan:
+        """Generate the optimal interception plan using Constraint Programming.
+
+        The optimization process involves:
+        1. Filtering: Identifying which vehicles can realistically participate.
+        2. Matrix Building: Computing travel times from each assignable vehicle to each candidate node.
+        3. CP Model: Defining variables, constraints, and the objective function.
+        4. Solving: Invoking the OR-Tools SAT solver.
+        5. Post-processing: Updating node/vehicle statuses and finalizing the Plan object.
+
+        Returns:
+            A Plan object containing assignments and performance stats.
+
+        Raises:
+            Exception: If the solver fails to find even a feasible (sub-optimal) solution.
+        """
+        # Reset assignable vehicles list in case this is called multiple times
+        self.assignable_vids = []
+
+        # 1. Filtering: Eliminate vehicles that could have been passed by the adversary
+        # if we assume it travels at MAX_SPEED_M_PER_SECOND
         for vehicle in self.vehicles.values():
-            # Don't bother calculating travel times for vehicles that are too close to the action
-            if self.travel_data.times_to_nodes.get(vehicle.position.u, 1) <= 0:
+            # Estimate if the adversary could have already passed the vehicle's position
+            dist_to_lkp = distance(self.escape_model.lk_point, vehicle.point)
+            approx_adv_speed = dist_to_lkp / self.escape_model.time_elapsed
+
+            if approx_adv_speed < MAX_SPEED_M_PER_SECOND:
                 logger.debug(
-                    f"Vehicle {vehicle.id} will not be assigned to the plan because the adversary has passed it."
+                    f"Vehicle {vehicle.id} bypassed: Adversary likely past this location "
+                    f"(speed={approx_adv_speed:.1f}m/s)."
                 )
                 vehicle.status = VehicleStatus.TOO_CLOSE_TO_LKP
             else:
+                # Calculate internal Dijkstra distance/time for this vehicle to the whole network
                 vehicle.set_travel_times()
                 self.assignable_vids.append(vehicle.id)
 
-    def plan_interception(self, time_margin: int = 0) -> "Plan":
-        """
-        Generate the optimal interception plan.
-
-        This method uses the OR-Tools solver to assign vehicles to interception nodes
-        in order to maximize the total interception score. It updates the status and
-        assignment of each vehicle.
-        """
-        # No vehicles, so no solution to find and nothing more to do
+        # Handle edge case: no resources available
         if len(self.assignable_vids) == 0:
-            return Plan(len(self.assignable_vids))
+            logger.warning("No assignable vehicles found for this scenario.")
+            self.plan = Plan(0)
+            return self.plan
 
-        node_scores: list[int] = self.candidate_nodes.node_scores
-        adv_paths_to_nodes: list[list[int]] = self.candidate_nodes.paths_as_seq_indices
-        adv_times_to_nodes: list[int] = self.candidate_nodes.times_to_nodes
+        # Prepare data for the CP model
+        candidate_nodes = self.escape_model.candidate_nodes
+        node_scores: list[int] = [node.score for node in candidate_nodes]
+        adv_times_to_nodes: list[float] = [node.time_reached for node in candidate_nodes]
 
+        # adv_paths_to_nodes identifies which candidate nodes belong to the same escape route
+        adv_paths_to_nodes: list[list[int]] = self.escape_model.get_paths_as_seq_indices()
+
+        # Build the cost matrix (Vehicle x Node)
         times_v_n: list[list[int]] = Vehicle.get_time_matrix(
             {i: self.vehicles[i] for i in self.assignable_vids},
-            self.candidate_nodes.node_osmids,
+            [node.osmid for node in candidate_nodes],
         )
         num_vehicles: int = len(times_v_n)
         num_nodes: int = len(times_v_n[0])
 
-        plan: Plan = Plan(len(self.assignable_vids))
+        plan = Plan(num_vehicles)
 
-        # The model
+        # 3. Model Definition using OR-Tools CP-SAT
         model = cp_model.CpModel()
 
-        # IntVars are actually booleans (NewBoolVar) or constants (NewConstant)
-        vehicule_node_matrix: list[list[IntVar]] = [[]] * num_vehicles
-        for vehicule_row_i in range(num_vehicles):
-            vehicule_node_matrix[vehicule_row_i] = []
-            for node_column_j in range(num_nodes):
-                # If our vehicle v_i can reach this node before the adversary, it's a boolean variable.
-                if adv_times_to_nodes[node_column_j] - times_v_n[vehicule_row_i][node_column_j] - time_margin > 0:
-                    vehicule_node_matrix[vehicule_row_i].append(
-                        model.NewBoolVar(f"x[v={vehicule_row_i},n={node_column_j}]")
-                    )
-                # Otherwise, this assignment is excluded and we can set the value to constant 0
+        # variables[v][n] is a boolean: 1 if vehicle v is assigned to node n, 0 otherwise
+        vehicle_node_matrix: list[list[IntVar]] = [[] for _ in range(num_vehicles)]
+
+        for v_i in range(num_vehicles):
+            for n_j in range(num_nodes):
+                # Reachability Condition:
+                # This vehicle can potentially be assigned to this node
+                if adv_times_to_nodes[n_j] - times_v_n[v_i][n_j] - self.time_margin > 0:
+                    var = model.NewBoolVar(f"x[v={v_i},n={n_j}]")
+                    vehicle_node_matrix[v_i].append(var)
                 else:
-                    vehicule_node_matrix[vehicule_row_i].append(model.NewConstant(0))
+                    # This vehicle should not be assigned to this node
+                    vehicle_node_matrix[v_i].append(model.NewConstant(0))
 
-        # _____________ Constraints  ____________
+        # --- Constraints ---
 
-        # C1: A vehicle is assigned to at most one node
-        for vehicule_row_i in range(num_vehicles):
-            model.Add(sum(vehicule_node_matrix[vehicule_row_i][n_j] for n_j in range(num_nodes)) <= 1)
+        # Constraint 1: Each vehicle can be assigned to AT MOST one interception point.
+        for v_i in range(num_vehicles):
+            model.Add(sum(vehicle_node_matrix[v_i]) <= 1)
 
-        # C2: A node is assigned to at most one vehicle
+        # Constraint 2: Each node can be assigned AT MOST one vehicle (no redundant monitoring).
         for n_j in range(num_nodes):
-            model.Add(sum(vehicule_node_matrix[v_i][n_j] for v_i in range(num_vehicles)) <= 1)
+            model.Add(sum(vehicle_node_matrix[v_i][n_j] for v_i in range(num_vehicles)) <= 1)
 
-        # C3: The number of vehicles on a shortest path cannot be greater than 1.
-        for sp_index in range(len(adv_paths_to_nodes)):
-            model.Add(
-                sum(
-                    vehicule_node_matrix[v_i][n_j]
-                    for v_i in range(num_vehicles)
-                    for n_j in adv_paths_to_nodes[sp_index]
-                )
-                <= 1
-            )
+        # Constraint 3: Branch Coverage Efficiency.
+        # We don't want multiple vehicles on the same linear escape path.
+        for path_indices in adv_paths_to_nodes:
+            model.Add(sum(vehicle_node_matrix[v_i][n_j] for v_i in range(num_vehicles) for n_j in path_indices) <= 1)
 
-        # _____________ End Constraints  ____________
+        # --- Objective Function ---
+        # Goal: Maximize the total score of monitored nodes.
+        # Higher scores are typically assigned to nodes closer to the LKP or on major roads.
+        objective_terms: list[Any] = []
+        for v_i in range(num_vehicles):
+            for n_j in range(num_nodes):
+                objective_terms.append(node_scores[n_j] * vehicle_node_matrix[v_i][n_j])
 
-        # Objective: maximize the sum of scores of assigned (monitored) nodes
-        objective_terms = [
-            node_scores[n_j] * vehicule_node_matrix[v_i][n_j] for v_i in range(num_vehicles) for n_j in range(num_nodes)
-        ]
         model.Maximize(sum(objective_terms))
 
+        # 4. Solving
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = MAX_TIME_TO_SOLVE
         status = solver.Solve(model)
 
-        if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-            logger.info(f"The total score of the plan is:  {solver.ObjectiveValue()}")
-            for vehicule_row_i in range(num_vehicles):
+        # 5. Post-processing Results if a solution was found
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            logger.info(f"Plan found with total score: {solver.ObjectiveValue()}")
+
+            for v_i in range(num_vehicles):
+                assigned = False
                 for n_j in range(num_nodes):
-                    if solver.BooleanValue(vehicule_node_matrix[vehicule_row_i][n_j]):
+                    if solver.BooleanValue(vehicle_node_matrix[v_i][n_j]):
+                        # Successful assignment! Create the rich domain object.
                         v_a = VehicleAssignment(
                             self.network,
-                            self.vehicles[self.assignable_vids[vehicule_row_i]],
-                            self.candidate_nodes.node_osmids[n_j],
-                            times_v_n[vehicule_row_i][n_j],
+                            self.vehicles[self.assignable_vids[v_i]],
+                            candidate_nodes[n_j].osmid,
+                            times_v_n[v_i][n_j],
                             adv_times_to_nodes[n_j],
                             node_scores[n_j],
                         )
                         plan.assignments.append(v_a)
+
+                        # Update domain statuses
+                        self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.ASSIGNED
+                        self.escape_model.set_as_control_node(v_a.destination_node)
+
                         logger.info(
-                            f"Vehicle {v_a.vehicle.id}({vehicule_row_i}) must go to node {v_a.destination_node}({n_j})."
-                            f"\nIt should arrive {adv_times_to_nodes[n_j] - times_v_n[vehicule_row_i][n_j]} seconds"
-                            f" before the adversary and contributes {node_scores[n_j]} points to the total score."
+                            f"VID {v_a.vehicle.id} -> Node {v_a.destination_node}. "
+                            f"Margin: {v_a.adv_time_to_dest - v_a.time_to_dest:.1f}s, Score: {v_a.score}"
                         )
-                        self.vehicles[self.assignable_vids[vehicule_row_i]].status = VehicleStatus.ASSIGNED
+                        assigned = True
                         break
-                else:
-                    self.vehicles[self.assignable_vids[vehicule_row_i]].status = VehicleStatus.UNASSIGNED
+
+                if not assigned:
+                    self.vehicles[self.assignable_vids[v_i]].status = VehicleStatus.UNASSIGNED
         else:
-            raise Exception("No plan was found")
+            logger.error("Solver failed to find a valid interception plan.")
+            raise Exception("No feasible plan found within time constraints.")
 
+        # Finalize the visual model state (which parts of the tree are now covered)
+        self.escape_model.set_cover_status()
         plan.solution_score = solver.ObjectiveValue()
-
-        for e_n in self.network.get_escape_nodes():
-            for assignment in plan.assignments:
-                if assignment.destination_node in self.travel_data.paths_to_nodes[e_n]:
-                    break
-            else:
-                plan.uncontrolled_nodes.append(e_n)
-        return plan
+        self.plan = plan
+        return self.plan
 
 
 class Plan:
+    """Represents the results of an optimization run.
+
+    Attributes:
+        assignments: List of vehicles and their target interception nodes.
+        solution_score: Total score achieved by the solver.
+        nb_assignable_vehicles: Total number of vehicles that were considered.
+    """
+
     def __init__(self, nb_assignable_vehicles: int):
+        """Initialize an empty plan.
+
+        Args:
+            nb_assignable_vehicles: Count of vehicles eligible for assignment.
+        """
         self.assignments: list[VehicleAssignment] = []
         self.solution_score: float = 0
         self.nb_assignable_vehicles: int = nb_assignable_vehicles
-        self.uncontrolled_nodes: list[int] = []
 
-    def get_stats(self):
-        """
-        Calculate statistics about the generated plan.
+    def get_stats(self) -> dict[str, Any]:
+        """Calculate performance and tactical statistics about the plan.
 
         Returns:
-            A dictionary containing various statistics such as number of escape nodes,
-            candidate nodes, score, vehicle assignments, and time margins.
+            Dictionary containing:
+                - score: Total plan score.
+                - nb_vehicles: Number of assignable vehicles.
+                - nb_assignments: Number of successful assignments.
+                - time_margin_stats: (min, avg, max) time buffer before adversary.
+                - time_to_dest_stats: (min, avg, max) travel time for police vehicles.
         """
-
         times_to_dest = [va.time_to_dest for va in self.assignments]
         time_margins = [va.adv_time_to_dest - va.time_to_dest for va in self.assignments]
 
@@ -170,54 +243,13 @@ class Plan:
             "nb_vehicles": self.nb_assignable_vehicles,
             "nb_assignments": len(self.assignments),
             "time_margin_stats": (
-                min(time_margins) if time_margins else 0,
-                int(sum(time_margins) / len(self.assignments)) if time_margins else 0,
-                max(time_margins) if time_margins else 0,
+                round(min(time_margins), 1) if time_margins else 0,
+                round(sum(time_margins) / len(self.assignments), 1) if time_margins else 0,
+                round(max(time_margins), 1) if time_margins else 0,
             ),
             "time_to_dest_stats": (
-                min(times_to_dest) if times_to_dest else 0,
-                int(sum(times_to_dest) / len(self.assignments)) if times_to_dest else 0,
-                max(times_to_dest) if times_to_dest else 0,
+                round(min(times_to_dest), 1) if times_to_dest else 0,
+                round(sum(times_to_dest) / len(self.assignments), 1) if times_to_dest else 0,
+                round(max(times_to_dest), 1) if times_to_dest else 0,
             ),
         }
-
-    def get_assignments_as_gdf(self) -> GeoDataFrame:
-        return GeoDataFrame(
-            [
-                [
-                    va.vehicle.id,
-                    va.trajectory_geom,
-                    va.vehicle.position.u,
-                    va.destination_node,
-                    va.time_to_dest,
-                    va.adv_time_to_dest,
-                    va.score,
-                ]
-                for va in self.assignments
-            ],
-            crs="EPSG:4326",
-            columns=Index(
-                [
-                    "vid",
-                    "geometry",
-                    "origin",
-                    "destination",
-                    "travel_time",
-                    "time_margin",
-                    "score",
-                ]
-            ),
-        )
-
-    def get_destinations_as_gdf(self) -> GeoDataFrame:
-        return GeoDataFrame(
-            [
-                [
-                    va.vehicle.id,
-                    va.destination_point,
-                ]
-                for va in self.assignments
-            ],
-            crs="EPSG:4326",
-            columns=Index(["vid", "geometry"]),
-        )

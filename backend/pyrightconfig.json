@@ -1,0 +1,19 @@
+{
+    "typeCheckingMode": "basic",
+    "include": [
+        "graphtactics",
+        "tests"
+    ],
+    "exclude": [
+        "typings"
+    ],
+    "venvPath": ".",
+    "venv": ".venv",
+    "reportMissingTypeStubs": true,
+    "reportUnknownMemberType": true,
+    "reportUnknownArgumentType": true,
+    "reportUnknownParameterType": true,
+    "reportUnknownVariableType": true,
+    "reportUnknownLambdaType": true,
+    "reportAny": false
+}

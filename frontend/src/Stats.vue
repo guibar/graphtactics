@@ -8,7 +8,7 @@
         <tr><td>{{ $t('stats.nbCandidateNodes') }}</td>  <td class='value'>{{stats['nb_candidate_nodes']}}</td></tr>
         <tr><td>{{ $t('stats.maxScore') }}</td>     <td class='value'>{{stats['max_possible_score']}}</td></tr>
         <tr><td>{{ $t('stats.score') }}</td>      <td class='value'>{{stats['score']}}</td></tr>
-        <tr><td>{{ $t('stats.efficiency') }}</td>        <td class='value'> 
+        <tr><td>{{ $t('stats.tightness') }}</td>        <td class='value'> 
                                         {{(stats['score']*100/stats['max_possible_score']).toFixed(0)}}%</td></tr>
         <tr><td>{{ $t('stats.nbVehicles') }}</td><td class='value'>{{stats['nb_vehicles']}}</td></tr>
         <tr><td>{{ $t('stats.nbAssignments') }}</td><td class='value'>{{stats['nb_assignments']}}</td></tr>

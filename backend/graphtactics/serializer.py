@@ -1,16 +1,21 @@
+from __future__ import annotations
+
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from logging import getLogger
 
-from geopandas import GeoDataFrame, read_file
+from geopandas import GeoDataFrame, read_file  # pyright: ignore[reportUnknownVariableType]
 from pandas import Index
-from shapely import LineString, unary_union
 from shapely.geometry import Point
+from shapely.geometry.linestring import LineString
 
-from .adversary import TravelData
+from graphtactics.adversary import Adversary
+from graphtactics.plan_geometry import PlanGeometry
+from graphtactics.position import Position
+from graphtactics.scenario import Scenario
+
 from .planner import Plan
 from .road_network import RoadNetwork
-from .scenario import Scenario
 from .utils import plans_dir
 from .vehicle import Vehicle
 
@@ -27,8 +32,9 @@ class Serializer:
         network: RoadNetwork,
         scenario: Scenario | None = None,
         plan: Plan | None = None,
+        geometry: PlanGeometry | None = None,
         filepath: str | None = None,
-    ):
+    ) -> None:
         if filepath:
             if not filepath.endswith(".gpkg"):
                 filepath = filepath + ".gpkg"
@@ -39,10 +45,11 @@ class Serializer:
 
         self.filepath: str = os.path.join(plans_dir, filepath)
         self.network: RoadNetwork = network
-        self.scenario = scenario
-        self.plan = plan
+        self.scenario: Scenario | None = scenario
+        self.plan: Plan | None = plan
+        self.geometry: PlanGeometry | None = geometry
 
-        logger.info("Data will be saved in {}".format(filepath))
+        logger.info(f"Data will be saved in {filepath}")
 
     def save(self) -> None:
         if not self.scenario:
@@ -52,137 +59,124 @@ class Serializer:
         self.save_scenario()
         self.save_adversary()
         self.save_vehicles()
-        self.save_travel_data()
-        self.save_candidate_nodes()
-        if self.plan:
-            self.save_plan()
+        self.save_plan_geometries()
+        self.save_plan()
 
     def save_scenario(self) -> None:
         if not self.scenario:
             return
+        lkp_position = self.scenario.adversary.lkp_position
         GeoDataFrame(
             [
                 {
-                    "time_elapsed_seconds": self.scenario.time_elapsed.total_seconds(),
-                    "geometry": self.scenario.adversary.lkp_position.init_point,
+                    "time_elapsed_seconds": self.scenario.time_elapsed,
+                    "geometry": lkp_position.init_point,
                 },
                 {
                     "graph_name": self.scenario.graph_name,
-                    "geometry": self.scenario.adversary.lkp_position.point,
+                    "geometry": self.network.pos_to_point(lkp_position),
                 },
             ],
             crs="EPSG:4326",
-        ).to_file(self.filepath, layer="scenario", driver="GPKG")
+        ).to_file(self.filepath, layer="scenario", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
 
     def save_adversary(self) -> None:
         if not self.scenario:
             return
-        adversary = self.scenario.adversary
+        adversary: Adversary = self.scenario.adversary
+        lkp_position: Position = adversary.lkp_position
         GeoDataFrame(
             [
                 {
                     "time_lkp": adversary.last_time_seen.isoformat(),
-                    "geometry": adversary.lkp_position.init_point,
+                    "geometry": lkp_position.init_point,
                 },
                 {
                     "time_lkp": adversary.last_time_seen.isoformat(),
-                    "geometry": adversary.lkp_position.point,
+                    "geometry": self.network.pos_to_point(lkp_position),
                 },
             ],
             crs="EPSG:4326",
-        ).to_file(self.filepath, layer="adversary", driver="GPKG")
+        ).to_file(self.filepath, layer="adversary", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
 
     def save_vehicles(self) -> None:
         if not self.scenario:
             return
         vehicles = self.scenario.vehicles
-        gdf = GeoDataFrame(
-            [
-                [veh.id, veh.position.u, veh.position.v, veh.position.ec, veh.position.point]
-                for veh in vehicles.values()
-            ],
-            columns=Index(["id", "u", "v", "edge_cursor", "geometry"]),
+        gdf: GeoDataFrame = GeoDataFrame(
+            data=[[veh.id, veh.point] for veh in vehicles.values()],
+            columns=Index(["id", "geometry"]),
             crs="EPSG:4326",
         )
         gdf.set_index("id", inplace=True)
-        gdf.to_file(self.filepath, layer="vehicles", driver="GPKG")
+        gdf.to_file(self.filepath, layer="vehicles", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
 
-    def save_travel_data(self) -> None:
-        if not self.scenario:
+    @staticmethod
+    def points_to_gdf(points: list[tuple[int, Point]]) -> GeoDataFrame:
+        """Create a GeoDataFrame from a list of Point geometries.
+
+        Returns an empty GeoDataFrame with the correct schema if the list is empty.
+        """
+        if not points:
+            return GeoDataFrame({"geometry": []}, crs="EPSG:4326")
+        return GeoDataFrame(
+            {"osmid": [id_pt[0] for id_pt in points], "geometry": [id_pt[1] for id_pt in points]}, crs="EPSG:4326"
+        )
+
+    def save_plan_geometries(self) -> None:
+        if self.geometry is None:
             return
-        travel_data = self.scenario.adversary.travel_data
-        self.travel_data_to_isochrone_gdf(travel_data).to_file(self.filepath, layer="td_isochrone", driver="GPKG")
-        self.travel_data_to_past_paths_gdf(travel_data).to_file(self.filepath, layer="td_past_paths", driver="GPKG")
-        self.travel_data_to_future_paths_gdf(travel_data).to_file(self.filepath, layer="td_future_paths", driver="GPKG")
-        self.travel_data_to_full_paths_gdf(travel_data).to_file(self.filepath, layer="td_full_paths", driver="GPKG")
+        paths_sets: dict[str, list[LineString]] = self.geometry.get_linestrings()
 
-    def travel_data_to_isochrone_gdf(self, travel_data: TravelData) -> GeoDataFrame:
-        point_list: list[Point] = [p if isinstance(p, Point) else p.point for p in travel_data.exact_positions.values()]
-        return GeoDataFrame(
-            [{"geometry": unary_union(point_list).convex_hull}],
+        GeoDataFrame(
+            [{"geometry": self.geometry.get_isochrone()}],
             crs="EPSG:4326",
+        ).to_file(self.filepath, layer="em_isochrone", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
+
+        self.points_to_gdf(self.geometry.njois).to_file(  # pyright: ignore[reportUnknownMemberType]
+            self.filepath, layer="em_njois", driver="GPKG"
         )
 
-    def travel_data_to_future_paths_gdf(self, travel_data: TravelData) -> GeoDataFrame:
-        return GeoDataFrame(
-            [
-                [
-                    en,
-                    self.network.to_linestring(travel_data.e_node_to_future_path[en])
-                    if travel_data.e_node_to_future_path[en]
-                    else LineString(),
-                ]
-                for en in travel_data.e_node_to_future_path.keys()
-            ],
-            columns=Index(["en", "geometry"]),
-            crs="EPSG:4326",
+        self.points_to_gdf(self.geometry.escape_nodes_covered).to_file(  # pyright: ignore[reportUnknownMemberType]
+            self.filepath, layer="em_ens_covered", driver="GPKG"
         )
 
-    def travel_data_to_past_paths_gdf(self, travel_data: TravelData) -> GeoDataFrame:
-        return GeoDataFrame(
-            [
-                [
-                    en,
-                    self.network.to_linestring(travel_data.e_node_to_past_path[en]),
-                ]
-                for en in travel_data.e_node_to_past_path.keys()
-            ],
-            columns=Index(["en", "geometry"]),
-            crs="EPSG:4326",
+        self.points_to_gdf(self.geometry.escape_nodes_uncovered).to_file(  # pyright: ignore[reportUnknownMemberType]
+            self.filepath, layer="em_ens_uncovered", driver="GPKG"
         )
 
-    def travel_data_to_full_paths_gdf(self, travel_data: TravelData) -> GeoDataFrame:
-        return GeoDataFrame(
-            [
-                [
-                    en,
-                    self.network.to_linestring(
-                        travel_data.e_node_to_past_path[en] + travel_data.e_node_to_future_path[en]
-                    ),
-                ]
-                for en in travel_data.e_node_to_past_path.keys()
-            ],
-            columns=Index(["en", "geometry"]),
+        GeoDataFrame(
+            paths_sets["past"],
+            columns=Index(["geometry"]),
             crs="EPSG:4326",
-        )
+        ).to_file(self.filepath, layer="em_past_paths", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
 
-    def save_candidate_nodes(self) -> None:
-        if not self.scenario:
-            return
-        node_ids = self.scenario.adversary.candidate_nodes.node_osmids
-        scores = self.scenario.adversary.candidate_nodes.node_scores
-        nodes_gdf = self.network.get_node_list_as_gdf(node_ids)
-        nodes_gdf["score"] = scores
-        nodes_gdf.to_file(self.filepath, layer="candidate_nodes", driver="GPKG")
+        GeoDataFrame(
+            paths_sets["uncontrolled"],
+            columns=Index(["geometry"]),
+            crs="EPSG:4326",
+        ).to_file(self.filepath, layer="em_uncontrolled_paths", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
+
+        GeoDataFrame(
+            paths_sets["before_control"],
+            columns=Index(["geometry"]),
+            crs="EPSG:4326",
+        ).to_file(self.filepath, layer="em_before_control_paths", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
+        GeoDataFrame(
+            paths_sets["after_control"],
+            columns=Index(["geometry"]),
+            crs="EPSG:4326",
+        ).to_file(self.filepath, layer="em_after_control_paths", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
 
     def save_plan(self) -> None:
-        if not self.plan:
+        if self.plan is None:
             return
-        move_list = [
+
+        move_list = [  # pyright: ignore[reportUnknownVariableType]
             [
                 va.vehicle.id,
                 va.trajectory_geom,
-                va.vehicle.position.u,
+                va.vehicle.position.u,  # pyright: ignore[reportOptionalMemberAccess]
                 va.destination_node,
                 va.time_to_dest,
                 va.adv_time_to_dest,
@@ -190,8 +184,8 @@ class Serializer:
             ]
             for va in self.plan.assignments
         ]
-        GeoDataFrame(
-            move_list,
+        GeoDataFrame(  # pyright: ignore[reportUnknownMemberType]
+            move_list,  # pyright: ignore[reportUnknownArgumentType]
             crs="EPSG:4326",
             columns=Index(
                 [
@@ -207,7 +201,7 @@ class Serializer:
         ).to_file(self.filepath, layer="plan", driver="GPKG")
 
     @staticmethod
-    def load_scenario(network: RoadNetwork, filepath: str) -> "Scenario":
+    def load_scenario(network: RoadNetwork, filepath: str) -> Scenario:
         """
         Load a Scenario from a GeoPackage file.
 
@@ -225,17 +219,17 @@ class Serializer:
         if not os.path.exists(filepath):
             filepath = os.path.join(plans_dir, filepath)
 
-        scenario_gdf: GeoDataFrame = read_file(filepath, layer="scenario")
-        adversary_gdf: GeoDataFrame = read_file(filepath, layer="adversary")
-        all_vehicles_gdf: GeoDataFrame = read_file(filepath, layer="vehicles")
-        veh = {
-            row.id: Vehicle(network, row.id, network.create_position_from_point(row.geometry, on_node=True))
-            for index, row in all_vehicles_gdf.iterrows()
+        scenario_gdf: GeoDataFrame = read_file(filepath, layer="scenario")  # pyright: ignore[reportUnknownVariableType]
+        adversary_gdf: GeoDataFrame = read_file(filepath, layer="adversary")  # pyright: ignore[reportUnknownVariableType]
+        all_vehicles_gdf: GeoDataFrame = read_file(filepath, layer="vehicles")  # pyright: ignore[reportUnknownVariableType]
+        veh = {  # pyright: ignore[reportUnknownVariableType]
+            row.id: Vehicle(network, row.id, row.geometry)
+            for index, row in all_vehicles_gdf.iterrows()  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         }
         return Scenario(
             network,
-            Point(scenario_gdf.at[1, "geometry"]),  # type: ignore
-            datetime.fromisoformat(str(adversary_gdf.at[0, "time_lkp"])),
-            veh,
-            timedelta(seconds=float(str(scenario_gdf.at[0, "time_elapsed_seconds"]))),
+            Point(scenario_gdf.at[1, "geometry"]),  # type: ignore # pyright: ignore[reportUnknownMemberType]
+            datetime.fromisoformat(str(adversary_gdf.at[0, "time_lkp"])),  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
+            veh,  # pyright: ignore[reportUnknownArgumentType]
+            int(scenario_gdf.at[0, "time_elapsed_seconds"]),  # pyright: ignore[reportArgumentType, reportUnknownArgumentType, reportUnknownMemberType]
         )

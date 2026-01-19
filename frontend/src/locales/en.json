@@ -14,12 +14,24 @@
     "error": {
       "timeout": "Maximum time of {timeout} seconds exceeded on call to {url}",
       "unknown": "Unknown error type on call to {url}",
-      "noVehicles": "Data Problem\nAt least one vehicle is required to generate a plan."
+      "noVehicles": "Invalid scenario\nAt least one vehicle is needed to generate a plan.\nGenerate some vehicles and try again."
+    },
+    "layers": {
+      "boundaries": "Boundaries",
+      "escapeNodes": "Escape points",
+      "vehicles": "Vehicles",
+      "isochrones": "Isochrones",
+      "uncontrolledPaths": "Uncontrolled paths",
+      "toControlPaths": "Paths to controls",
+      "fromControlPaths": "Paths from controls",
+      "pastPaths": "Past paths",
+      "assignments": "Assignments",
+      "controls": "Control points"
     },
     "tooltips": {
       "vid": "VID: {id}",
       "destination": "Destination of vehicle {id}",
-      "affectation": "VID: {vid}<br>Origin Node: {origin}<br>Destination Node: {destination}<br>Travel Time: {travel_time}<br>Waiting Time: {time_margin}<br>Score Contribution: {score}"
+      "affectation": "VID: {vid}\nOrigin Node: {origin}\nDestination Node: {destination}\nTravel Time: {travel_time}\nExpected Waiting Time: {exp_waiting_time} s\nScore Contribution: {score}"
     }
   },
   "stats": {
@@ -29,7 +41,7 @@
     "nbCandidateNodes": "Candidate nodes:",
     "maxScore": "Max score:",
     "score": "Score obtained:",
-    "efficiency": "Efficiency:",
+    "tightness": "Tightness:",
     "nbVehicles": "Vehicles available:",
     "nbAssignments": "Vehicles mobilised:",
     "vehicleTimes": "Mobilised Vehicles stats (in sec.)",

@@ -38,6 +38,7 @@ dependencies = [
     "pygithub>=2.8.1",
     "python-dotenv>=1.2.1",
     "pydantic~=2.10.0",
+    "anytree>=2.13.0",
 ]
 
 [project.optional-dependencies]
@@ -65,11 +66,16 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
 
 [dependency-groups]
 dev = [
+    "basedpyright==1.37.1",
     "httpx>=0.28.1",
+    "pandas-stubs>=2.3.3.251219",
     "pytest>=8.3.5",
     "ruff>=0.14.9",
+    "types-geopandas>=1.1.2.20251224",
+    "types-networkx>=3.6.1.20251220",
+    "types-shapely>=2.1.0.20250917",
 ]

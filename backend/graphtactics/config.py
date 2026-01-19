@@ -13,11 +13,32 @@ AVAILABLE_NETWORKS = ["30", "60", "60c", "67", "74", "82", "d2", "noailles", "st
 # Load environment variables from .env file
 load_dotenv()
 
-# Configuration - modify these variables
+# =============================================================================
+# Domain Constants
+# =============================================================================
+
+# Planner: Maximum speed threshold for filtering vehicles (80 km/h in m/s)
+MAX_SPEED_M_PER_SECOND: float = 80000 / 3600
+
+# Scenario: Default time margin in seconds for vehicle arrival before adversary
+DEFAULT_TIME_MARGIN: int = 30
+
+# Road Network Factory: Buffer distance around boundary polygons in meters
+BUFFER_IN_METERS: int = 6000
+
+# Escape Model: Scoring constants
+SCORE_LAST_EDGE_FACTOR: int = 80  # Weight for the highway type of the last edge
+SCORE_TIME_FACTOR: int = 480  # Weight for time-based score component
+SCORE_TIME_CONSTANT: int = 900  # Time constant for exponential decay (10 min = neutral)
+
+# =============================================================================
+# GitHub / Release Configuration
+# =============================================================================
+
 GITHUB_TOKEN: str | None = os.environ.get("GITHUB_TOKEN")
 REPO_NAME: str = "guibar/graphtactics"
-RELEASE_TAG: str = "osm-networks-v1.1"
-RELEASE_NAME: str = "Network Files v1.1"
+RELEASE_TAG: str = "osm-networks-v1.2"
+RELEASE_NAME: str = "Network Files v1.2"
 RELEASE_DESCRIPTION: str = "Pre-generated network files some areas"
 
 # Directory containing network files

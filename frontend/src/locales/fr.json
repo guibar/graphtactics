@@ -14,12 +14,24 @@
     "error": {
       "timeout": "Le temps maximum de {timeout} secondes a été dépassé sur l'appel à {url}",
       "unknown": "Erreur de type inconnue sur l'appel à {url}",
-      "noVehicles": "Problème de données\nIl faut au moins un véhicule pour pouvoir générer un dispositif."
+      "noVehicles": "Scénario invalide\nIl faut au moins un véhicule pour générer un dispositif.\nGénérez des véhicules et réessayez."
+    },
+    "layers": {
+      "boundaries": "Limites",
+      "escapeNodes": "Points de fuite",
+      "vehicles": "Véhicules",
+      "isochrones": "Isochrone",
+      "uncontrolledPaths": "Trajets non contrôlés",
+      "toControlPaths": "Trajets avant contrôles",
+      "fromControlPaths": "Trajets après contrôles",
+      "pastPaths": "Trajets passés",
+      "assignments": "Affectations",
+      "controls": "Points de contrôle"
     },
     "tooltips": {
       "vid": "VID : {id}",
       "destination": "Destination du vehicule {id}",
-      "affectation": "VID: {vid}<br>Noeud origine: {origin}<br>Noeud destination: {destination}<br>Temps de trajet: {travel_time}<br>Temps d'attente: {time_margin}<br>Contrbution au score: {score}"
+      "affectation": "VID: {vid}\nNoeud origine: {origin}\nNoeud destination: {destination}\nTemps de trajet: {travel_time}\nTemps d'attente estimé: {exp_waiting_time} s\nContrbution au score: {score}"
     }
   },
   "stats": {
@@ -29,7 +41,7 @@
     "nbCandidateNodes": "Points candidats:",
     "maxScore": "Score maximum:",
     "score": "Score obtenu:",
-    "efficiency": "Étanchéité:",
+    "tightness": "Étanchéité:",
     "nbVehicles": "Véhicules disponibles:",
     "nbAssignments": "Véhicules moblisés:",
     "vehicleTimes": "Temps véhicules (en sec.)",

@@ -8,11 +8,6 @@ type Events = {
 };
 export const emitter = mitt<Events>();
 
-// Leaflet icon fix
-// Note: This side-effect might need to stay in main or be imported early.
-// Given it modifies Icon.Default.prototype, it should probably run at app start.
-// But myIcons uses `icon` from leaflet.
-
 export const myIcons = {
     'carAssignable': icon({
         iconUrl: require("@/assets/car.svg"),
@@ -47,6 +42,11 @@ export const myIcons = {
     }),
     'en-uncontrolled': icon({
         iconUrl: require("@/assets/pin-red.png"),
+        iconAnchor: [15, 30],
+        iconSize: [30, 30],
+    }),
+    'en-irrelevant': icon({
+        iconUrl: require("@/assets/pin-grey.png"),
         iconAnchor: [15, 30],
         iconSize: [30, 30],
     }),

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
+import argparse
 import json
 import logging
 import os
 import re
-import sys
 from io import BytesIO
 from pathlib import Path
 from typing import cast
@@ -10,22 +12,22 @@ from urllib.request import urlopen
 from zipfile import BadZipFile, ZipFile, is_zipfile
 
 import osmnx
-from geopandas import GeoDataFrame, GeoSeries, read_file
-from networkx import MultiDiGraph, edge_boundary
-from osmnx import (
-    add_edge_bearings,
-    add_edge_speeds,
-    add_edge_travel_times,
-    load_graphml,
+from geopandas import GeoDataFrame, GeoSeries, read_file  # pyright: ignore[reportUnknownVariableType]
+from networkx import MultiDiGraph, edge_boundary  # pyright: ignore[reportUnknownVariableType]
+from osmnx import (  # pyright: ignore[reportUnknownVariableType]
+    add_edge_bearings,  # pyright: ignore[reportUnknownVariableType]
+    add_edge_speeds,  # pyright: ignore[reportUnknownVariableType]
+    add_edge_travel_times,  # pyright: ignore[reportUnknownVariableType]
+    load_graphml,  # pyright: ignore[reportUnknownVariableType]
     projection,
 )
 from pandas import Series
-from pandas.core.base import IndexLabel
-from shapely import MultiPolygon
+from shapely import MultiPolygon, from_wkt, to_wkt  # pyright: ignore[reportUnknownVariableType]
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
 from .config import (
+    BUFFER_IN_METERS,
     DEPARTEMENTS_DATA_DIR,
     DEPARTEMENTS_SHP_FILE_PATH,
     DEPARTEMENTS_SHP_ZIPPED_URL,
@@ -35,7 +37,6 @@ from .road_network import RoadNetwork
 from .utils import (
     convert_bool_string,
     data_dir,
-    edge_quantifier,
     stringify_nonnumeric_cols,
 )
 
@@ -46,8 +47,6 @@ logger = logging.getLogger(__name__)
 network_dir: str = os.path.join(data_dir, "networks")
 osmnx.settings.cache_folder = os.path.join(data_dir, "osmnx_cache")
 osmnx.settings.use_cache = True
-
-BUFFER_IN_METERS: int = 5000
 
 
 def get_buffered_poly(polygon: Polygon, buffer_in_meters: float = BUFFER_IN_METERS) -> Polygon:
@@ -107,7 +106,7 @@ def boundary_from_name(name: str) -> Polygon:
         return get_departement_polygon(departement_code=name[0:2], include_neighbours=True)
     # try to find a named box in boxes.json
     else:
-        with open(os.path.join(os.path.join(data_dir, "boxes.json")), "r") as f:
+        with open(os.path.join(os.path.join(data_dir, "boxes.json"))) as f:
             boxes = json.load(f)
         if name in boxes:
             bbox = boxes.get(name)
@@ -139,8 +138,8 @@ def get_departement_polygon(departement_code: str, include_neighbours: bool) -> 
     departments_gdf = get_departments_gdf()
     try:
         shape: BaseGeometry = departments_gdf[departments_gdf["DDEP_C_COD"] == departement_code].iloc[0]["geometry"]
-    except KeyError:
-        raise Exception(f"No geometry is associated with {departement_code}")
+    except KeyError as e:
+        raise Exception(f"No geometry is associated with {departement_code}") from e
 
     if include_neighbours:
         logger.info(f"Adding departements neighbours of {departement_code}")
@@ -161,7 +160,9 @@ def get_departement_polygon(departement_code: str, include_neighbours: bool) -> 
 
 
 def analyze_boundary(
-    graph: MultiDiGraph, nodes_df: GeoDataFrame, polygon: Polygon
+    graph: MultiDiGraph,  # pyright: ignore[reportUnknownParameterType]
+    nodes_df: GeoDataFrame,
+    polygon: Polygon,
 ) -> tuple[GeoDataFrame, GeoDataFrame, set[int]]:
     """
     Identifies the edges that cross the boundary of the given polygon,the intersection points
@@ -184,16 +185,17 @@ def analyze_boundary(
     nodes_in_polygon: set[int] = set(cast(Series, is_within_polygon[is_within_polygon]).index)
 
     # Helper to get edge data using highway ranking logic
-    def get_edge_data_dict(edge: tuple[int, int]) -> dict:
-        edge_data = max(graph.get_edge_data(edge[0], edge[1]).values(), key=edge_quantifier)
+    def get_edge_data_dict(edge: tuple[int, int]) -> dict:  # pyright: ignore[reportUnknownParameterType]
+        edge_data = max(graph.get_edge_data(edge[0], edge[1]).values(), key=RoadNetwork.edge_quantifier)  # pyright: ignore[reportUnknownMemberType]
         return dict(edge_data)
 
     # edge_boundary returns edges where edge[0] is inside and edge[1] is outside
-    edges_as_dict = [
-        {"in": edge[0], "out": edge[1], **get_edge_data_dict(edge)} for edge in edge_boundary(graph, nodes_in_polygon)
+    edges_as_dict = [  # pyright: ignore[reportUnknownVariableType]
+        {"in": edge[0], "out": edge[1], **get_edge_data_dict(edge)}  # pyright: ignore[reportUnknownArgumentType]
+        for edge in edge_boundary(graph, nodes_in_polygon)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
     ]
     # Create a GeoDataFrame for these crossing edges
-    x_edges = GeoDataFrame(edges_as_dict, crs="EPSG:4326")
+    x_edges = GeoDataFrame(edges_as_dict, crs="EPSG:4326")  # pyright: ignore[reportUnknownArgumentType]
 
     # Ensure all non-numeric columns are stringified for compatibility
     # not sure this is needed as tests pass without it
@@ -209,7 +211,7 @@ def analyze_boundary(
 
     # Replace MultiPoint geometries by the first point in the collection for consistency
     intersection_points = GeoSeries(
-        intersection_points.apply(lambda g: g.geoms[0] if g.geom_type == "MultiPoint" else g)
+        intersection_points.apply(lambda g: g.geoms[0] if g.geom_type == "MultiPoint" else g)  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
     )
 
     # Convert GeoSeries to GeoDataFrame to match return type
@@ -236,10 +238,10 @@ def extract_zip_url(url: str, dest_folder: Path) -> None:
             raise Exception(f"The file downloaded from {url} is not a valid zip archive.")
         with ZipFile(zip_bytes) as zip_file:
             zip_file.extractall(path=dest_folder)
-    except BadZipFile:
-        raise Exception(f"Failed to open zip file from {url}")
+    except BadZipFile as err:
+        raise Exception(f"Failed to open zip file from {url}") from err
     except Exception as e:
-        raise Exception(f"Error extracting from {url}: {e}")
+        raise Exception(f"Error extracting from {url}: {e}") from e
 
 
 def get_departments_gdf(dir: Path = DEPARTEMENTS_DATA_DIR) -> GeoDataFrame:
@@ -319,7 +321,7 @@ class RoadNetworkFactory:
             ValueError: If bbox exists but has invalid format/values
         """
         # Will raise FileNotFoundError if file doesn't exist
-        with open(self.bbox_file, "r") as f:
+        with open(self.bbox_file) as f:
             # Will raise json.JSONDecodeError if invalid JSON
             boxes: dict[str, list[float]] = json.load(f)
 
@@ -361,7 +363,6 @@ class RoadNetworkFactory:
         # so we don't have to pass them around
         self.name: str = name
         self.graphml_path: str = os.path.join(self.cache_dir, f"{name}.graphml")
-        self.gpkg_path: str = os.path.join(self.cache_dir, f"{name}.gpkg")
 
         # we check that name makes sense before proceeding
         if not self._is_departement_code() and not self.is_valid_bbox():
@@ -378,39 +379,34 @@ class RoadNetworkFactory:
 
         # else we try to load from cache or download from GitHub releases
         # 1. Check cache
-        if os.path.isfile(self.graphml_path) and os.path.isfile(self.gpkg_path):
-            return self.instantiate_from_files()
-        # 2. Try to download from GitHub releases
-        elif download_files(self.name, Path(self.cache_dir)):
+        if os.path.isfile(self.graphml_path) or download_files(self.name, Path(self.cache_dir)):
             return self.instantiate_from_files()
         # 3. We recreate from boundaries, the early check ensures this should work
         else:
             raise ValueError(f"Network files for '{self.name}' not found in cache or GitHub releases. ")
 
     def instantiate_from_files(self) -> RoadNetwork:
-        """Load network from files. Assumes files are present.
+        """Load network from graphml file. Assumes file is present.
 
         Returns:
             RoadNetwork instance
         """
-        graph: MultiDiGraph = load_graphml(self.graphml_path, node_dtypes={"inner": convert_bool_string})
+        graph: MultiDiGraph = load_graphml(  # pyright: ignore[reportUnknownVariableType]
+            self.graphml_path, node_dtypes={"inner": convert_bool_string}
+        )
 
-        nodes_gdf: GeoDataFrame = read_file(self.gpkg_path, layer="nodes")
-        nodes_gdf.set_index("osmid", inplace=True, verify_integrity=True)
-        edges_gdf: GeoDataFrame = read_file(self.gpkg_path, layer="edges")
-        out_edges_gdf: GeoDataFrame = read_file(self.gpkg_path, layer="out_edges")
-        out_intersections_gdf: GeoDataFrame = read_file(self.gpkg_path, layer="out_edges_intersections")
-        boundaries_gdf: GeoDataFrame = read_file(self.gpkg_path, layer="boundaries")
-        boundary: Polygon = boundaries_gdf.iloc[0].geometry
-        boundary_buff: Polygon = boundaries_gdf.iloc[1].geometry
+        # Parse escape_nodes from graph attribute (comma-separated node IDs)
+        escape_nodes_str: str = graph.graph.get("escape_nodes", "")
+        escape_nodes: set[int] = {int(n) for n in escape_nodes_str.split(",") if n}
+
+        # Parse boundaries from WKT strings stored in graph attributes
+        boundary: Polygon = cast(Polygon, from_wkt(graph.graph["boundary"]))
+        boundary_buff: Polygon = cast(Polygon, from_wkt(graph.graph["boundary_buff"]))
 
         return RoadNetwork(
             name=self.name,
-            graph=graph,
-            nodes_df=nodes_gdf,
-            edges_df=edges_gdf,
-            out_edges_df=out_edges_gdf,
-            out_intersections_df=out_intersections_gdf,
+            graph=graph,  # pyright: ignore[reportUnknownArgumentType]
+            escape_nodes=escape_nodes,
             boundary=boundary,
             boundary_buff=boundary_buff,
         )
@@ -432,7 +428,7 @@ class RoadNetworkFactory:
             '["motorcar"!~"no"]["service"!~"alley|driveway|emergency_access|parking|'
             'parking_aisle|private"]'
         )
-        graph: MultiDiGraph = osmnx.graph_from_polygon(
+        graph: MultiDiGraph = osmnx.graph_from_polygon(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             boundary_buff,
             network_type="drive",
             simplify=True,
@@ -440,68 +436,124 @@ class RoadNetworkFactory:
             truncate_by_edge=True,
             custom_filter=main_roads_filter,
         )
-        logger.info(f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")
+        logger.info(f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()} edges")  # pyright: ignore[reportUnknownMemberType]
         # keep only the largest connected component
-        graph = osmnx.truncate.largest_component(graph, strongly=True)
+        graph = osmnx.truncate.largest_component(graph, strongly=True)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         logger.info(
-            f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()}"
+            f"Graph has {graph.number_of_nodes()} nodes and {graph.number_of_edges()}"  # pyright: ignore[reportUnknownMemberType]
             + " edges after removing disconnected components"
         )
 
         logger.info("OSM data downloaded, processing the graph ...")
         nodes_gdf: GeoDataFrame
-        edges_gdf: GeoDataFrame
-        nodes_gdf, edges_gdf = osmnx.graph_to_gdfs(graph)
-        out_edges_gdf, out_intersections_gdf, nodes_in_boundary = analyze_boundary(graph, nodes_gdf, boundary)
+        nodes_gdf, _edges_gdf = osmnx.graph_to_gdfs(graph)  # pyright: ignore[reportUnknownMemberType]
+        out_edges_gdf, _out_intersections_gdf, nodes_in_boundary = analyze_boundary(graph, nodes_gdf, boundary)
 
         nodes_to_remove: list[int] = []
         # set the inner flag and mark nodes to delete
         logger.info("Adding the 'inner' field to nodes and removing dead-ends outside the boundary ...")
-        for node in graph.nodes:
+        for node in graph.nodes:  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             if node in nodes_in_boundary:
-                graph.nodes[node]["inner"] = True
-                if graph.out_degree(node) == 0 or graph.in_degree(node) == 0:
-                    nodes_to_remove.append(node)
+                graph.nodes[node]["inner"] = True  # pyright: ignore[reportUnknownMemberType]
+                if graph.out_degree(node) == 0 or graph.in_degree(node) == 0:  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                    nodes_to_remove.append(node)  # pyright: ignore[reportUnknownArgumentType]
             else:
-                graph.nodes[node]["inner"] = False
+                graph.nodes[node]["inner"] = False  # pyright: ignore[reportUnknownMemberType]
 
         # remove the nodes_to_remove from the graph, nodes_gdf and edges_gdf
         for node in nodes_to_remove:
-            graph.remove_node(node)
+            graph.remove_node(node)  # pyright: ignore[reportUnknownMemberType]
         nodes_gdf = cast(GeoDataFrame, nodes_gdf.drop(nodes_to_remove))
 
-        # Remove edges where either the source (level 0) or target (level 1) node is in nodes_to_remove
-        mask = edges_gdf.index.get_level_values(0).isin(nodes_to_remove) | edges_gdf.index.get_level_values(1).isin(
-            nodes_to_remove
-        )
-        edges_gdf = cast(GeoDataFrame, edges_gdf.drop(cast(IndexLabel, edges_gdf[mask].index)))
+        # add essential edge attributes for routing before saving to graphml
+        add_edge_bearings(graph)  # pyright: ignore[reportUnknownArgumentType]
+        add_edge_speeds(graph)  # pyright: ignore[reportUnknownArgumentType]
+        add_edge_travel_times(graph)  # pyright: ignore[reportUnknownArgumentType]
 
-        # without this, lists cause errors when saving to file
+        # Compute escape_nodes from out_edges (nodes just outside the boundary)
+        escape_nodes: set[int] = set(out_edges_gdf["out"].astype(int))
+
+        # Store escape_nodes and boundaries as graph-level attributes for graphml
+        graph.graph["escape_nodes"] = ",".join(str(n) for n in escape_nodes)
+        graph.graph["boundary"] = to_wkt(boundary)
+        graph.graph["boundary_buff"] = to_wkt(boundary_buff)
+
+        osmnx.save_graphml(graph, self.graphml_path, gephi=False, encoding="utf-8")  # pyright: ignore[reportUnknownMemberType]
+
+        logger.info(f"File {self.graphml_path} has been successfully generated.")
+
+    def graphml_to_gpkg(self, graphml_path: str, gpkg_path: str) -> None:
+        """
+        Convert a GraphML file to a GeoPackage file with specific layers.
+
+        Layers included:
+        - nodes
+        - edges
+        - boundary
+        - boundary buffer
+
+        Args:
+            graphml_path: Path to the input GraphML file.
+            gpkg_path: Path to the output GeoPackage file.
+        """
+        graph: MultiDiGraph = load_graphml(  # pyright: ignore[reportUnknownVariableType]
+            graphml_path, node_dtypes={"inner": convert_bool_string}
+        )
+
+        # Get nodes and edges GeoDataFrames
+        nodes_gdf, edges_gdf = osmnx.graph_to_gdfs(graph)  # pyright: ignore[reportUnknownMemberType]
+
+        # Stringify non-numeric columns to ensure GeoPackage compatibility
         nodes_gdf = stringify_nonnumeric_cols(nodes_gdf)
         edges_gdf = stringify_nonnumeric_cols(edges_gdf)
 
-        nodes_gdf.to_file(self.gpkg_path, layer="nodes", driver="GPKG")
-        edges_gdf.to_file(self.gpkg_path, layer="edges", driver="GPKG")
-        boundaries_gdf: GeoDataFrame = GeoDataFrame(
-            [{"geometry": boundary, "id": "inner"}, {"geometry": boundary_buff, "id": "outer"}], crs=graph.graph["crs"]
-        )  # crs is "EPSG:4326"
-        boundaries_gdf.to_file(self.gpkg_path, layer="boundaries", driver="GPKG")
-        out_edges_gdf.to_file(self.gpkg_path, layer="out_edges", driver="GPKG")
-        out_intersections_gdf.to_file(self.gpkg_path, layer="out_edges_intersections", driver="GPKG")
+        # Save nodes and edges
+        nodes_gdf.to_file(gpkg_path, layer="nodes", driver="GPKG")  # pyright: ignore[reportUnknownMemberType]
+        edges_gdf.to_file(gpkg_path, layer="edges", driver="GPKG", mode="a")  # pyright: ignore[reportUnknownMemberType]
 
-        # add essential edge attributes for routing before saving to graphml
-        add_edge_bearings(graph)
-        add_edge_speeds(graph)
-        add_edge_travel_times(graph)
+        # Extract boundary and boundary_buff from graph attributes
+        boundary_wkt = graph.graph.get("boundary")
+        boundary_buff_wkt = graph.graph.get("boundary_buff")
 
-        osmnx.save_graphml(graph, self.graphml_path, gephi=False, encoding="utf-8")
+        # Save boundary layer
+        if boundary_wkt:
+            boundary_polygon = cast(Polygon, from_wkt(boundary_wkt))
+            boundary_gdf = GeoDataFrame(geometry=[boundary_polygon], crs=nodes_gdf.crs)
+            boundary_gdf.to_file(gpkg_path, layer="boundary", driver="GPKG", mode="a")  # pyright: ignore[reportUnknownMemberType]
 
-        logger.info(f"Files {self.graphml_path} and {self.gpkg_path} have been successfully generated.")
+        # Save boundary buffer layer
+        if boundary_buff_wkt:
+            boundary_buff_polygon = cast(Polygon, from_wkt(boundary_buff_wkt))
+            boundary_buff_gdf = GeoDataFrame(geometry=[boundary_buff_polygon], crs=nodes_gdf.crs)
+            boundary_buff_gdf.to_file(gpkg_path, layer="boundary buffer", driver="GPKG", mode="a")  # pyright: ignore[reportUnknownMemberType]
+
+        logger.info(f"Successfully converted {graphml_path} to {gpkg_path}")
 
 
 def main():
-    factory: RoadNetworkFactory = RoadNetworkFactory()
-    factory.create(sys.argv[1], create_from_scratch=True)
+    parser = argparse.ArgumentParser(description="Road Network Factory CLI")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Create command
+    create_parser = subparsers.add_parser("create", help="Create a road network from OSM")
+    create_parser.add_argument("name", help="Name of the department or bbox")
+    create_parser.add_argument("--scratch", action="store_true", help="Force creation from scratch")
+
+    # Convert command
+    convert_parser = subparsers.add_parser("convert", help="Convert GraphML to GeoPackage")
+    convert_parser.add_argument("input", help="Path to input GraphML file")
+    convert_parser.add_argument("output", help="Path to output GeoPackage file")
+
+    args = parser.parse_args()
+
+    factory = RoadNetworkFactory()
+
+    if args.command == "create":
+        factory.create(args.name, create_from_scratch=args.scratch)
+    elif args.command == "convert":
+        factory.graphml_to_gpkg(args.input, args.output)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

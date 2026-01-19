@@ -1,70 +1,67 @@
+"""
+Road Network management and spatial utility module.
+
+This module provides the `RoadNetwork` class, which serves as a high-level
+wrapper around an OSM-derived NetworkX graph. It handles geographic-to-graph
+conversions, shortest-path routing (Dijkstra), and spatial operations like
+snapping points to edges and generating random distributions.
+
+Key Features:
+- Lazy coordinate computation for network positions.
+- Bidirectional Dijkstra routing from arbitrary points on edges.
+- Integration with OSMNX for nearest-node/edge lookups.
+- Highway ranking for interception scoring logic.
+"""
+
+from __future__ import annotations
+
+import itertools
 import logging
-from collections import namedtuple
+import random
+from enum import Enum
 from typing import cast
 
-from geopandas import GeoDataFrame
-from networkx import MultiDiGraph, single_source_dijkstra
-from numpy.random import default_rng
-from osmnx import settings, shortest_path
-from osmnx.distance import nearest_edges, nearest_nodes
-from pandas import DataFrame
+from networkx import MultiDiGraph, single_source_dijkstra, subgraph_view
+from osmnx import settings
+from osmnx.distance import (
+    nearest_edges,  # pyright: ignore[reportUnknownVariableType]
+    nearest_nodes,  # pyright: ignore[reportUnknownVariableType]
+)
 from shapely import ops
 from shapely.geometry import LineString, Point, Polygon
 
 from .position import Position
-from .utils import edge_quantifier, highway_value_to_int
+from .utils import merge_lines
 
+# OSMNX settings for internal logging Control
 settings.log_console = True
-settings.log_level = logging.INFO
+settings.log_level = logging.WARNING
 logger = logging.getLogger(__name__)
 
 
-EdgeRef = namedtuple("EdgeRef", ["u", "v", "ec"])
-
-
 class RoadNetwork:
-    """
-    A class that wraps around the osmnx graph objects and allows me to manipulate it the graph the way I want
-    This class is a singleton because we always want to have a unique underlying graph
+    """A wrapper for the road network graph providing tactical and spatial utilities.
 
-    Attributes
-    ----------
-    name : str
-        the 2 digits of a departement or 2 digits + c
-    graph : MultiDiGraph
-        the osmnx object of this type that is wrapped
-    nodes_df : GeoDataFrame
-        the nodes of the graph as a gdf
-    edges_df : GeoDataFrame
-        the edges of the graph as a gdf
-    self.boundary: Polygon
-        the polygon representing the geographic boundary of the
-        zone in which we operate. if the opponent leaves this zone
-        it is game over for us.
-    self.boundary_buff: Polygon
-        a buffer around the boundary to make sure that there are no border
-        effects due to the graph ending abruptly.
-    out_edges_df: GeoDataFrame
-        the subset of edges_df which go from inside the boundary
-        to outside
-    self.out_intersections_df: GeoDataFrame
-        the points (or multipoints) of intersection between out_edges_df
-        and the boundary.
+    This class manages a NetworkX `MultiDiGraph` where nodes represent junctions
+    (with 'x', 'y' and 'inner' attributes) and edges represent road segments
+    (with 'travel_time', 'highway', and 'geometry' attributes).
 
-    Methods
-    -------
-    node_to_point(self, node_id: int)
-        converts an osmid into a geographic point
+    Attributes:
+        name: A unique identifier for the network (e.g., '60' or 'd2').
+        graph: The NetworkX MultiDiGraph representing the road topology.
+        boundary: A Shapely Polygon defining the operational area.
+        boundary_buff: A larger safety buffer surrounding the operational boundary.
+        escape_nodes: A set of OSM nodes IDs that lie outside 'boundary' but which are at
+            the end of an edge whose other end is inside the 'boundary'.
+        central_position: A `Position` object representing the centroid of
+            the operational boundary, used for setting an arbitrary initial position for the adversary.
     """
 
     def __init__(
         self,
         name: str,
-        graph: MultiDiGraph,
-        nodes_df: GeoDataFrame,
-        edges_df: GeoDataFrame,
-        out_edges_df: GeoDataFrame,
-        out_intersections_df: GeoDataFrame,
+        graph: MultiDiGraph[int],
+        escape_nodes: set[int],
         boundary: Polygon,
         boundary_buff: Polygon,
     ):
@@ -76,141 +73,78 @@ class RoadNetwork:
         Args:
             name: Network identifier
             graph: NetworkX MultiDiGraph representing the road network
-            nodes_df: GeoDataFrame of network nodes
-            edges_df: GeoDataFrame of network edges
-            out_edges_df: GeoDataFrame of edges crossing the boundary
-            out_intersections_df: GeoDataFrame of boundary intersection points
+            escape_nodes: Set of nodes outside the boundary (escape destinations)
             boundary: Polygon of the operational zone
             boundary_buff: Buffered polygon around the boundary
         """
         self.name: str = name
-        self.graph: MultiDiGraph = graph
-        self.nodes_df: GeoDataFrame = nodes_df
-        self.edges_df: GeoDataFrame = edges_df
-        self.out_edges_df: GeoDataFrame = out_edges_df
-        self.out_intersections_df: GeoDataFrame = out_intersections_df
+        self.graph: MultiDiGraph[int] = graph
+        self.escape_nodes: set[int] = escape_nodes
         self.boundary: Polygon = boundary
         self.boundary_buff: Polygon = boundary_buff
         self.central_position: Position = self.create_position_from_point(self.boundary.centroid)
 
-    # when the geometry is a simple line between 2 points, it doesn't seem to be stored e.g. (1390672272, 1390672213)
-    def get_edge_geometry(self, edge: tuple[int, int]) -> LineString:
-        # get_edge_data creates a LineString if geometry is missing, so this cast is safe
-        result = self.get_edge_data(edge, key="geometry")
-        assert isinstance(result, LineString), f"Expected LineString but got {type(result)}"
-        return result
-
-    # this one is special because it sometimes returns a single value and sometimes a list
-    def get_edge_hw_as_int(self, edge: tuple[int, int]) -> int:
-        hw_value = self.get_edge_data(edge, key="highway")
-        # highway value should be str or list of str, not a dict
-        assert not isinstance(hw_value, dict), "Expected str or list[str] but got dict"
-        return highway_value_to_int(hw_value)  # type: ignore[arg-type]
-
-    def get_route_edge_junctions(self, route):
-        """
-        Get junction attribute values for edges along a route.
-
-        This is used to detect if nodes are on the same roundabout.
-        The get_route_edge_attributes function was removed from osmnx 2.0,
-        so we implement this simplified version specific to junction attributes.
+    def has_in_boundary(self, position: Position) -> bool:
+        """Check if a position's edge is within the inner operational boundary.
 
         Args:
-            route: List of nodes representing the route
+            position: The road network position to check.
 
         Returns:
-            List of junction attribute values for each edge in the route
-            (None if edge doesn't have a junction attribute)
+            True if either the source or destination node of the position's
+            edge is marked as 'inner'.
         """
-        junctions = []
-        for u, v in zip(route[:-1], route[1:]):
-            # For MultiDiGraph, get the first edge's data
-            edge_data = self.graph.get_edge_data(u, v)
-            if edge_data:
-                # Get first key (edge could have multiple edges between same nodes)
-                first_edge = edge_data[min(edge_data.keys())]  # type: ignore[type-var]
-                junctions.append(first_edge.get("junction"))
-            else:
-                junctions.append(None)
-        return junctions
+        return self.graph.nodes[position.u]["inner"] or self.graph.nodes[position.v]["inner"]
 
-    def are_on_same_round_about(self, node1: int, node2: int) -> bool:
-        sh_path_n1_n2 = shortest_path(self.graph, node1, node2)
-        return set(self.get_route_edge_junctions(sh_path_n1_n2)) == {"roundabout"}
+    # ============================================================
+    # Position factory methods
+    # ============================================================
 
-    def node_to_edge_ref(self, node: int) -> EdgeRef:
-        v_list = list(self.graph.successors(node))
-        if not v_list:
-            raise Exception(f"Node {node} has no outgoing edges to create an EdgeRef.")
-        v = v_list[0]
-        return EdgeRef(node, v, 0.0)
+    def create_position_from_point(self, point: Point, on_node: bool = False) -> Position:
+        """Find a coordinate on the road network closest to the given point.
 
-    def points_to_edge_refs(self, points: list[Point], on_node=False) -> list[EdgeRef]:
+        If `on_node` is True, it snaps to the single closest node.
+        If `on_node` is False (default), it snaps to the closest position on an edge.
+
+        Args:
+            point: The Shapely Point (lng, lat) to project.
+            on_node: If True, snap exactly to a node. Otherwise, snap to an edge.
+
+        Returns:
+            A new `Position` object with snapped graph coordinates.
+
+        Raises:
+            ValueError: If the nearest node has no outgoing edges.
+        """
         if on_node:
-            u_list = nearest_nodes(
+            # Snap to single closest node
+            u = nearest_nodes(
                 self.graph,
-                [point.x for point in points],
-                [point.y for point in points],
+                [point.x],
+                [point.y],
                 return_dist=False,
-            ).tolist()
-            return [self.node_to_edge_ref(u) for u in u_list]
+            ).tolist()[0]
+
+            try:
+                # We pick an arbitrary successor to define an edge, as Position
+                # requires an (u,v) pair even for node-snapped locations.
+                return Position(u=u, v=next(self.graph.successors(u)), ec=0.0, init_point=point)
+            except StopIteration as err:
+                raise ValueError(f"Node {u} has no outgoing edges.") from err
         else:
-            # nearest_edges returns a list of (u, v, key) tuples for multiple points
+            # Snap to the closest directed edge
             edges = nearest_edges(
                 self.graph,
-                [point.x for point in points],
-                [point.y for point in points],
+                [point.x],
+                [point.y],
                 return_dist=False,
             )
-            u_list, v_list, key_list = zip(*edges)  # Transpose list of tuples into separate lists
+            u, v, _ = edges[0]
+            edge_geom = self.get_edge_as_linestring(u, v)
 
-            edges_geometries: list[LineString] = [self.get_edge_geometry((u, v)) for u, v in zip(u_list, v_list)]
-            ec_list: list[float] = [
-                edge_geom.project(point, normalized=True) for edge_geom, point in zip(edges_geometries, points)
-            ]
-            return [EdgeRef(u, v, ec) for u, v, ec in zip(u_list, v_list, ec_list)]
-
-    def node_to_point(self, node_id: int) -> Point:
-        return Point(self.graph.nodes[node_id]["x"], self.graph.nodes[node_id]["y"])
-
-    def edge_ref_to_point(self, edge_ref: EdgeRef) -> Point:
-        if edge_ref.ec < 0.0 or edge_ref.ec > 1.0:
-            raise Exception("Edge cursor must be between 0.0 and 1.0")
-        if not self.graph.has_edge(edge_ref.u, edge_ref.v):
-            raise Exception("No edge exists from {} to {}".format(edge_ref.u, edge_ref.v))
-        line_of_edge: LineString = self.get_edge_geometry((edge_ref.u, edge_ref.v))
-        return line_of_edge.interpolate(edge_ref.ec, normalized=True)
-
-    def get_random_points_in_boundary(self, nb, seed=None) -> list[Point]:
-        """
-        Generate random geographic points within the graph's boundary polygon.
-        Points are generated within the bounding box and rejected
-        if they fall outside the boundary polygon.
-
-        Args:
-            nb: Number of random points to generate
-            seed: Optional random seed for reproducibility (default: None)
-
-        Returns:
-            List of Point objects guaranteed to be within the boundary polygon
-        Raises:
-            Exception: If unable to generate enough points after 10 times the number of points requested
-        """
-        rng = default_rng(seed)
-        points: list[Point] = []
-        nb_loops: int = 0
-        while len(points) < nb:
-            point: Point = Point(
-                rng.uniform(self.boundary.bounds[0], self.boundary.bounds[2]),
-                rng.uniform(self.boundary.bounds[1], self.boundary.bounds[3]),
-            )
-            if self.boundary.contains(point):
-                points.append(point)
-            # just in case we get no points inside the boundary
-            nb_loops += 1
-            if nb_loops > 10 * nb:
-                raise Exception("We have been inside the while loop {} times.".format(nb_loops))
-        return points
+            # Project the point onto the edge to find the closest position on the edge
+            ec = edge_geom.project(point, normalized=True)
+            return Position(u, v, ec, init_point=point)
 
     def get_random_positions(self, qty: int, on_node: bool = False, seed: int | None = None) -> list[Position]:
         """
@@ -225,272 +159,416 @@ class RoadNetwork:
             seed: Random seed for reproducibility (default: None)
 
         Returns:
-            List of EdgeRef namedtuples (u,v,ec)
+            List of Position objects
         """
-        rng = default_rng(seed)
-        edge_cursors: list[float]
-        random_edges: DataFrame = self.edges_df.iloc[rng.choice(len(self.edges_df), qty, replace=False)]
+        if seed is not None:
+            random.seed(seed)
+        # Get all edges as a list and randomly sample from them
+        all_edges: list[tuple[int, int]] = list(self.graph.edges())
+        random_edges: list[tuple[int, int]] = random.sample(all_edges, qty)
         if on_node:
-            edge_cursors = [0.0] * qty
+            edge_cursors: list[float] = [0.0] * qty
         else:
-            edge_cursors = cast(list[float], rng.random(qty))
+            edge_cursors = [random.random() for _ in range(qty)]
         return [
-            self.create_position_from_edge_ref(EdgeRef(int(random_edge["u"]), int(random_edge["v"]), edge_cursor))
-            for (_, random_edge), edge_cursor in zip(random_edges.iterrows(), edge_cursors)
+            Position(u=u, v=v, ec=edge_cursor) for (u, v), edge_cursor in zip(random_edges, edge_cursors, strict=True)
         ]
 
-    def has_in_boundary(self, position: Position) -> bool:
-        return self.graph.nodes[position.u]["inner"]
+    # ============================================================
+    # Conversion to point methods
+    # ============================================================
 
-    def get_escape_nodes(self) -> list[int]:
-        return self.out_edges_df["out"].unique().tolist()
-
-    def get_times_and_paths_from(self, source: int) -> tuple[dict[int, int], dict[int, list[int]]]:
-        # the return types of single_source_dijkstra are a union to cater for the case where the
-        # target is specified or not, so we need to cast here
-        times_float, paths = cast(
-            tuple[dict[int, float], dict[int, list[int]]],
-            single_source_dijkstra(self.graph, source, weight="travel_time", target=None),
-        )
-        times_int = {node: int(time) for node, time in times_float.items()}
-        return times_int, paths
-
-    def get_times_and_paths_from_position(self, position: Position) -> tuple[dict[int, int], dict[int, list[int]]]:
-        """
-        Compute shortest paths from a position on an edge to all reachable nodes.
-
-        For one-way edges, only paths via position.v are considered.
-        For bidirectional edges, paths via both position.u and position.v are compared.
+    def node_to_point(self, node_id: int) -> Point:
+        """Find the geographic coordinates of a graph node.
 
         Args:
-            position: Starting position on an edge
+            node_id: The OSM ID of the junction.
 
         Returns:
-            Tuple of (times_dict, paths_dict) where:
-            - times_dict maps node -> total travel time (int)
-            - paths_dict maps node -> list of nodes in shortest path
+            A Shapely Point (lng, lat).
         """
-        fastest_edge_data = min(
-            self.graph.get_edge_data(position.u, position.v).values(), key=lambda x: x["travel_time"]
-        )
+        return Point(self.graph.nodes[node_id]["x"], self.graph.nodes[node_id]["y"])
 
-        if fastest_edge_data["oneway"] == "yes":
-            times_float, paths = cast(
-                tuple[dict[int, float], dict[int, list[int]]],
-                single_source_dijkstra(self.graph, position.v, weight="travel_time", target=None),
+    def pos_to_point(self, position: Position) -> Point:
+        """Calculate the geographic Point for a given Position.
+
+        This method performs linear interpolation along the edge using the
+        `edge_cursor` (percentage). The result is cached within the `position`
+        object to avoid redundant calculations.
+
+        Args:
+            position: The Position object containing edge (u, v) and cursor.
+
+        Returns:
+            A Shapely Point interpolated along the edge's geometry.
+
+        Raises:
+            ValueError: If the edge (u, v) does not exist in the graph.
+        """
+        # Return cached value if already computed
+        if position._point is not None:
+            return position._point
+
+        if not self.graph.has_edge(position.u, position.v):
+            raise ValueError(f"No edge exists from {position.u} to {position.v}")
+
+        # Interpolate the point along the LineString geometry of the edge
+        line = self.get_edge_as_linestring(position.u, position.v)
+        point = line.interpolate(position.ec, normalized=True)
+
+        # Cache in the frozen dataclass using object.__setattr__
+        object.__setattr__(position, "_point", point)
+        return point
+
+    # ============================================================
+    # Routing Method
+    # ============================================================
+
+    def get_times_and_paths_from_position(
+        self, point: Point, time_elapsed: float, ens_as_sink: bool = False
+    ) -> tuple[Position, dict[int, float], dict[int, list[int]]]:
+        """Compute shortest travel times and paths from any point in the zone to all osm nodes.
+
+        This method is the core routing engine for both vehicles and the adversary.
+        Since the starting point is usually on an edge (not at a junction), we must
+        calculate the time from both endpoints of the edge (u or v) and keep the best
+        result for each node. We first need to place the point somewhere on the network.
+        The resulting Position object is returned with the computed times and paths.
+
+        Logic:
+        1. If the edge is one-way (u -> v), we only compute paths via node 'v'.
+        2. If bidirectional, we compute paths via both 'u' and 'v' and return
+           the best route for each node.
+        3. Because we don't want to deal with routes that exit the zone and then re-enter it,
+           we use subgraphs to eliminate any further path that goes through an escape node.
+           This is only used if `ens_as_sink` is True
+
+        Args:
+            point: The starting geographic Point.
+            time_elapsed: Seconds already passed (subtracted from final results).
+            ens_as_sink: If True, treat escape nodes as dead-ends (no outgoing edges).
+
+        Returns:
+            A tuple containing:
+            - The created Position object (snapped point).
+            - A dict mapping node OSMID to travel time (seconds, adjusted by time_elapsed).
+            - A dict mapping node OSMID to the list of nodes forming the path.
+        """
+        # Determine the graph to use based on the 'sink' requirement
+        if ens_as_sink:
+            # Create a view that 'cuts off' any path attempting to leave an escape node.
+            def filter_edge_out_of_escape_nodes(u: int, v: int, key: int) -> bool:
+                return u not in self.escape_nodes
+
+            _graph: MultiDiGraph = cast(  # type: ignore
+                MultiDiGraph,
+                subgraph_view(self.graph, filter_edge=filter_edge_out_of_escape_nodes),
             )
-            time_to_v = self.get_time_from_position_to_v(position)
-            times_int = {node: int(time + time_to_v) for node, time in times_float.items()}
-            return times_int, paths
-
         else:
-            # Compute paths from both endpoints
+            _graph = self.graph
+
+        # Snap the input point to the closest edge in the selected graph. We had to wait until this
+        # point to do the snapping to avoid snapping the adversary to an edge that would be
+        # eliminated by the subgraph view.
+        position: Position = self.create_position_from_point(point, on_node=False)
+
+        if _graph.get_edge_data(position.u, position.v, 0) is None:  # type: ignore
+            raise ValueError(f"Edge {position.u} -> {position.v} not found in graph view")
+
+        # Calculate time needed to reach the immediate endpoint 'v'
+        time_to_v = self.get_time_from_position_to_v(position)
+
+        # CASE 1: ONE-WAY EDGE
+        if _graph.get_edge_data(position.u, position.v, 0)["oneway"] == "yes":  # type: ignore
+            times, paths = cast(
+                tuple[dict[int, float], dict[int, list[int]]],
+                single_source_dijkstra(_graph, position.v, weight="travel_time", target=None),  # type: ignore
+            )
+            # Offset all times by the time it took to reach node 'v' from the start point
+            times = {node: time + time_to_v - time_elapsed for node, time in times.items()}
+            return position, times, paths
+
+        # CASE 2: BIDIRECTIONAL EDGE
+        else:
+            # We must consider two starting directions: towards 'u' and towards 'v'
+            time_to_u = self.get_time_from_position_to_u(position)
+
+            # --- Routing via 'u' ---
+            # When leaving towards u, we are not interested in routes that would go via v
+            # as they would necessarily be worse than the route via v.
+            # This only makes sense from an efficiency perspective.
+            avoid_v_graph: MultiDiGraph = cast(  # type: ignore
+                MultiDiGraph,
+                subgraph_view(_graph, filter_edge=lambda u, v, k: (u, v) != (position.u, position.v)),  # type: ignore
+            )
+
             times_from_u, paths_from_u = cast(
                 tuple[dict[int, float], dict[int, list[int]]],
-                single_source_dijkstra(self.graph, position.u, weight="travel_time", target=None),
+                single_source_dijkstra(avoid_v_graph, position.u, weight="travel_time", target=None),  # type: ignore
+            )
+
+            # --- Routing via 'v' ---
+            # Similarly, when leaving towards v, exclude the immediate reverse edge (v -> u).
+            avoid_u_graph: MultiDiGraph = cast(  # type: ignore
+                MultiDiGraph,
+                subgraph_view(_graph, filter_edge=lambda u, v, k: (u, v) != (position.v, position.u)),  # type: ignore
             )
             times_from_v, paths_from_v = cast(
                 tuple[dict[int, float], dict[int, list[int]]],
-                single_source_dijkstra(self.graph, position.v, weight="travel_time", target=None),
+                single_source_dijkstra(avoid_u_graph, position.v, weight="travel_time", target=None),  # type: ignore
             )
 
-            time_to_u = self.get_time_from_position_to_u(position)
-            time_to_v = self.get_time_from_position_to_v(position)
-
-            # Combine results, choosing the better path for each node
-            all_nodes_reachable = set(times_from_u.keys()) | set(times_from_v.keys())
-            times_int: dict[int, int] = {}
+            # Merge the results from the two search directions
+            all_reachable = set(times_from_u.keys()) | set(times_from_v.keys())
+            times: dict[int, float] = {}
             paths: dict[int, list[int]] = {}
 
-            for node in all_nodes_reachable:
-                t_u = times_from_u.get(node, float("inf")) + time_to_u
-                t_v = times_from_v.get(node, float("inf")) + time_to_v
+            for node in all_reachable:
+                # Compare the travel time via node 'u' vs the travel time via node 'v'
+                time_via_u = times_from_u.get(node, float("inf")) + time_to_u
+                time_via_v = times_from_v.get(node, float("inf")) + time_to_v
 
-                times_int[node] = int(min(t_u, t_v))
-                paths[node] = paths_from_u.get(node, []) if t_u < t_v else paths_from_v.get(node, [])
+                # Store the most efficient path for this node
+                times[node] = min(time_via_u, time_via_v) - time_elapsed
+                paths[node] = paths_from_u[node] if time_via_u < time_via_v else paths_from_v[node]
 
-            return times_int, paths
+            return position, times, paths
 
-    # Position factory methods
-    def create_position_from_point(self, point: Point, on_node: bool = False) -> "Position":
+    # ============================================================
+    # Edge data Methods
+    # ============================================================
+
+    @staticmethod
+    def edge_quantifier(edge_dict: dict[str, list[str] | str]) -> int:
         """
-        Create a Position by snapping a geographic point to the road network.
+        Convert the value of the highway tag from an edge to an integer ranking.
+        The value can be a string or list of strings.
+        Many OSM highway tags include a suffix after an underscore (e.g., 'tertiary_link', 'motorway_link').
+        The base type (before the underscore) is used for ranking, so 'tertiary_link' is treated as 'tertiary'.
+        If the value is a list, returns the highest-ranked base type.
+        If the value is a string, returns the base type (before any underscore).
 
+        Example:
+            edge_quantifier('tertiary_link') -> 2  (same as 'tertiary')
+            edge_quantifier(['secondary_link', 'tertiary'])  -> 3 (secondary > tertiary)
+            cf HighwayRank for the ranking dictionary.
         Args:
-            point: Geographic point to snap to network
-            on_node: If True, snap to nearest node; if False, snap to nearest point on edge
+            edge_dict (Dict[str, str]): Dictionary of edge attributes, must include 'highway'.
 
         Returns:
-            Position object with snapped coordinates and edge reference
+            int: Integer ranking for the highway type, or -1 if not recognized.
         """
+        hw_value: list[str] | str = edge_dict["highway"]
 
-        init_point = point
-        u, v, e = self.points_to_edge_refs([point], on_node=on_node)[0]
-        snapped_point = self.edge_ref_to_point(EdgeRef(u, v, e))
-        return Position(init_point=init_point, point=snapped_point, u=u, v=v, ec=e)
+        if isinstance(hw_value, list):
+            base_type = max(
+                [elem.split("_")[0] for elem in hw_value],
+                key=lambda tag: getattr(HighwayRank, tag.upper(), HighwayRank.UNCLASSIFIED).value,
+            )
+        else:
+            base_type = hw_value.split("_")[0]
+        return getattr(HighwayRank, base_type.upper(), HighwayRank.UNCLASSIFIED).value
 
-    def create_position_from_edge_ref(self, edge_ref: EdgeRef) -> "Position":
-        """
-        Create a Position from an edge reference.
+    def get_edge_hw_as_int(self, u: int, v: int) -> int:
+        """Get the numeric rank of an edge based on its OSM highway tag.
 
         Args:
-            edge_ref: EdgeRef with u, v, and edge_cursor
+            u: Source node ID.
+            v: Destination node ID.
 
         Returns:
-            Position object with coordinates calculated from edge reference
+            The integer rank (0-6) from `HighwayRank`.
         """
+        hw_value: list[str] | str = self.graph.get_edge_data(u, v, 0)["highway"]
+        if isinstance(hw_value, list):
+            base_type = max(
+                [elem.split("_")[0] for elem in hw_value],
+                key=lambda tag: getattr(HighwayRank, tag.upper(), HighwayRank.UNCLASSIFIED).value,
+            )
+        else:
+            base_type = hw_value.split("_")[0]
+        return getattr(HighwayRank, base_type.upper(), HighwayRank.UNCLASSIFIED).value
 
-        point = self.edge_ref_to_point(edge_ref)
-        return Position(
-            init_point=point,
-            point=point,
-            u=edge_ref.u,
-            v=edge_ref.v,
-            ec=edge_ref.ec,
+    def get_edge_travel_time(self, u: int, v: int) -> float:
+        """Get the travel time for an edge in seconds.
+
+        Args:
+            u: Source node ID.
+            v: Destination node ID.
+
+        Returns:
+            The 'travel_time' attribute from the edge data.
+        """
+        return self.graph.get_edge_data(u, v, 0)["travel_time"]
+
+    # ============================================================
+    # Edge geometry Methods
+    # ============================================================
+
+    def get_edge_as_linestring(self, u: int, v: int) -> LineString:
+        """Retrieve the geometry LineString for a specific graph edge.
+
+        If the edge is missing geometry (common for straight-line edges in some
+        OSM extracts), a simple LineString between the two nodes is created
+        and cached.
+
+        Args:
+            u: Source node ID.
+            v: Destination node ID.
+
+        Returns:
+            Shapely LineString representing the road segment.
+        """
+        edge_data = self.graph.get_edge_data(u, v, 0)
+
+        if "geometry" not in edge_data:
+            linestring = LineString(
+                [
+                    Point(self.graph.nodes[u]["x"], self.graph.nodes[u]["y"]),
+                    Point(self.graph.nodes[v]["x"], self.graph.nodes[v]["y"]),
+                ]
+            )
+            logger.debug(f"Geometry synthesized for edge {u, v}")
+            edge_data["geometry"] = linestring
+        else:
+            linestring = cast(LineString, edge_data["geometry"])
+        return linestring
+
+    def get_partial_linestring(self, position: Position, u_or_v: int, reverse: bool = False) -> LineString:
+        """Find the linstring corresponding to the portion of an edge between position and either u or v.
+
+        Args:
+            position: The starting graph position (u, v, ec).
+            u_or_v: The target endpoint node (must be position.u or position.v).
+            reverse: If True, the resulting LineString will be oriented from
+                the node towards the position. If False (default), from
+                position towards the node.
+
+        Returns:
+            A clipped Shapely LineString.
+
+        Raises:
+            ValueError: If `u_or_v` is not one of the edge's endpoints.
+        """
+        if u_or_v == position.v:
+            if position.ec == 1.0:
+                v_point = self.node_to_point(position.v)
+                return LineString([v_point, v_point])
+            # v is at the end of the edge (1.0)
+            start, end = (1.0, position.ec) if reverse else (position.ec, 1.0)
+        elif u_or_v == position.u:
+            if position.ec == 0.0:
+                u_point = self.node_to_point(position.u)
+                return LineString([u_point, u_point])
+            # u is at the start of the edge (0.0)
+            start, end = (0.0, position.ec) if reverse else (position.ec, 0.0)
+        else:
+            raise ValueError("u_or_v must be either position.u or position.v")
+
+        return cast(
+            LineString,
+            ops.substring(self.get_edge_as_linestring(position.u, position.v), start, end, normalized=True),
         )
 
-    def create_position_from_node(self, u: int) -> "Position":
-        """
-        Create a Position from a graph node.
+    # ======================================================================
+    # Path geometry Methods (EscapeModel has its own version of this method)
+    # ======================================================================
+
+    def to_linestring(self, path: list[int], pos_before: Position) -> LineString:
+        """Combine multiple graph segments into a single continuous LineString.
+
+        This is used for visualizing vehicle trajectories. The path is prefixed with the segment
+        from the current vehicle position to the first node in the path.
 
         Args:
-            u: Node ID
+            path: Sequential list of node IDs.
+            pos_before: The position of the vehicle somewhere on an edge leading to the first node in path
 
         Returns:
-            Position at the node with edge_cursor=0.0
-        """
+            A merged Shapely LineString.
 
-        edge_ref = self.node_to_edge_ref(u)
-        point = self.node_to_point(u)
-        return Position(init_point=point, point=point, u=edge_ref.u, v=edge_ref.v, ec=edge_ref.ec)
-
-    def _edges_to_ls(self, nodes: list[int]) -> LineString:
-        if not nodes:
-            raise ValueError("Empty list of nodes cannot be converted to a LineString")
-        if len(nodes) == 1:
-            point = self.node_to_point(nodes[0])
-            return LineString([point, point])
-        else:
-            return cast(LineString, ops.linemerge([self.get_edge_geometry(edge) for edge in zip(nodes, nodes[1:])]))
-
-    def to_linestring(
-        self, nodes: list[int], pos_before: Position | None = None, pos_after: Position | None = None
-    ) -> LineString:
-        """
-        Get a single LineString representing the path between a list of nodes.
-
-        Args:
-            nodes: List of node IDs representing the path. Successive nodes should be connected by edges.
-        Returns:
-            LineString representing the path
+        Raises:
+            ValueError: If `pos_before` is not located on an edge connected to the first node in the path.
         """
         line_pieces: list[LineString] = []
 
-        # Add segment before nodes if pos_before is provided
+        # Add fractional segment if starting from a mid-edge position
         if pos_before:
-            if pos_before.u == nodes[0]:
-                # u_to_position_as_ls goes from u to position, but we need position to u
-                # so we reverse the coordinates
-                line_pieces.append(self.position_to_u_as_ls(pos_before))
-            elif pos_before.v == nodes[0]:
-                # v_to_position_as_ls goes from v to position, but we need position to v
-                # so we reverse the coordinates
-                line_pieces.append(self.position_to_v_as_ls(pos_before))
+            if pos_before.u == path[0] or pos_before.v == path[0]:
+                line_pieces.append(self.get_partial_linestring(pos_before, u_or_v=path[0]))
             else:
-                raise ValueError(f"Position: {pos_before} is not compatible with nodes: {nodes}")
+                raise ValueError(f"Position {pos_before} incompatible with path start {path[0]}")
 
-        # Add the main node path
-        line_pieces.append(self._edges_to_ls(nodes))
+        # Stitch together all edges in the path
+        line_pieces.extend([self.get_edge_as_linestring(u, v) for u, v in itertools.pairwise(path)])
+        return merge_lines(line_pieces)
 
-        # Add segment after nodes if pos_after is provided
-        if pos_after:
-            if pos_after.u == nodes[-1]:
-                line_pieces.append(self.position_to_u_as_ls(pos_after))
-            elif pos_after.v == nodes[-1]:
-                line_pieces.append(self.position_to_v_as_ls(pos_after))
-            else:
-                raise ValueError(f"Position: {pos_after} is not compatible with nodes: {nodes}")
+    # ============================================================
+    # Time Methods
+    # ============================================================
 
-        return cast(LineString, ops.linemerge(line_pieces))
-
-    def position_to_u_as_ls(self, position: Position) -> LineString:
-        if position.ec == 0.0:
-            u_point = self.node_to_point(position.u)
-            return LineString([u_point, u_point])
-        return cast(
-            LineString,
-            ops.substring(self.get_edge_geometry((position.u, position.v)), position.ec, 0.0, normalized=True),
-        )
-
-    def position_to_v_as_ls(self, position: Position) -> LineString:
-        if position.ec == 1.0:
-            v_point = self.node_to_point(position.v)
-            return LineString([v_point, v_point])
-        return cast(
-            LineString,
-            ops.substring(self.get_edge_geometry((position.u, position.v)), position.ec, 1.0, normalized=True),
-        )
-
-    # return the geometry only but as a dataframe, not a series
-    def get_node_list_as_gdf(self, the_lst: list[int]):
-        return self.nodes_df.loc[the_lst, ["geometry"]]
-
-    # this allows us to treat the MultiDiGraph as a Digraph. Instead of having to put a [0] after everything
-    def get_edge_data(self, edge: tuple[int, int], key=None, default=None) -> str | dict[str, object]:
-        """
-        Retrieve data associated with an edge in a MultiDiGraph.
-        We treat the MultiDiGraph as a Digraph by using only the edge with the highest
-        highway ranking if there are multiple edges.
-
-        If the geometry attribute is missing, it is constructed as a LineString between the two nodes.
-        Optionally, a specific attribute can be retrieved using the 'key' argument.
+    def get_time_from_position_to_u(self, position: Position) -> float:
+        """Calculate the travel time from a along-the-edge position back to the 'u' node.
 
         Args:
-            edge (Tuple[int, int]): The edge specified as a tuple of node IDs (u, v).
-            key (str, optional): Specific attribute to retrieve from the edge data. If None, returns the full edge data.
-            default (any, optional): Default value to return if the specified key is not found.
+            position: Current graph position.
 
         Returns:
-            Union[str, Dict[str, object]]: Either the requested edge attribute (str)
-            or the full edge data dictionary (Dict[str, object]).
+            Seconds to reach node 'u'.
         """
-        # Validate edge exists
-        raw_edge_data = self.graph.get_edge_data(edge[0], edge[1])
-        if raw_edge_data is None:
-            raise ValueError(f"Edge {edge} does not exist in the graph")
+        edge_travel_time = self.get_edge_travel_time(position.u, position.v)
+        return edge_travel_time * position.ec
 
-        edge_data: dict[str, object] = max(raw_edge_data.values(), key=edge_quantifier)
+    def get_time_from_position_to_v(self, position: Position) -> float:
+        """Calculate the travel time from a along-the-edge position forward to the 'v' node.
 
-        # if you are going to need the geometry, check if it is missing
-        if (key is None or key == "geometry") and "geometry" not in edge_data.keys():
-            edge_data["geometry"] = LineString(
-                [
-                    Point(self.graph.nodes[edge[0]]["x"], self.graph.nodes[edge[0]]["y"]),
-                    Point(self.graph.nodes[edge[1]]["x"], self.graph.nodes[edge[1]]["y"]),
-                ]
-            )
-        if key is None:
-            return edge_data
-        # Cast to expected return type - caller is responsible for ensuring type safety
-        return cast(str | dict[str, object], edge_data.get(key, default))
+        Args:
+            position: Current graph position.
 
-    def get_edge_position_after_time(self, u: int, v: int, time_elapsed: int) -> Position:
-        # find the edge between the nodes with the minimum travel time
-        edge_data: dict[str, object] = min(self.graph.get_edge_data(u, v).values(), key=lambda x: x["travel_time"])
-        edge_travel_time: float = cast(float, edge_data["travel_time"])
-        if not (0 <= time_elapsed <= edge_travel_time):
-            raise ValueError(f"Time elapsed {time_elapsed} is out of bounds for edge {u}-{v}")
-        return self.create_position_from_edge_ref(EdgeRef(u, v, time_elapsed / edge_travel_time))
+        Returns:
+            Seconds to reach node 'v'.
+        """
+        edge_travel_time = self.get_edge_travel_time(position.u, position.v)
+        return edge_travel_time * (1 - position.ec)
 
-    def get_edge_travel_time(self, u: int, v: int) -> int:
-        """Get edge data for the edge with minimum travel time between u and v."""
-        fastest_edge_data = min(self.graph.get_edge_data(u, v).values(), key=lambda x: x["travel_time"])
-        return int(fastest_edge_data["travel_time"])
+    def update_position_after_duration(self, position: Position, duration: float, towards_v: bool) -> Position:
+        """Move a position along its current edge for a specific duration.
 
-    def get_time_from_position_to_u(self, position: Position) -> int:
-        edge_data = self.get_edge_travel_time(position.u, position.v)
-        return int(edge_data * position.ec)
+        Note: This does not support crossing junctions. It will raise an error
+        if the duration would push the position beyond the current edge.
 
-    def get_time_from_position_to_v(self, position: Position) -> int:
-        edge_data = self.get_edge_travel_time(position.u, position.v)
-        return int(edge_data * (1 - position.ec))
+        Args:
+            position: Starting graph position.
+            duration: Time in seconds of movement.
+            towards_v: If True, moves towards node 'v' (increasing cursor).
+                If False, moves towards node 'u' (decreasing cursor).
+
+        Returns:
+            A new Position object with the updated edge cursor.
+
+        Raises:
+            ValueError: If the movement would overshoot the edge boundaries [0, 1].
+        """
+        if towards_v:
+            new_ec = position.ec + duration / self.get_edge_travel_time(position.u, position.v)
+        else:
+            new_ec = position.ec - duration / self.get_edge_travel_time(position.u, position.v)
+
+        if new_ec > 1 or new_ec < 0:
+            raise ValueError(f"Movement overshoot: Duration {duration}s pushes position {position} beyond its edge.")
+        return Position(u=position.u, v=position.v, ec=new_ec)
+
+
+class HighwayRank(Enum):
+    """Categorization of OSM highway tags for tactical scoring.
+
+    Higher values represent higher-speed, more significant arterial roads.
+    """
+
+    UNCLASSIFIED = 0
+    RESIDENTIAL = 1
+    TERTIARY = 2
+    SECONDARY = 3
+    PRIMARY = 4
+    TRUNK = 5
+    MOTORWAY = 6

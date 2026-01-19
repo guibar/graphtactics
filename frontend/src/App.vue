@@ -68,52 +68,62 @@
 
       <l-tile-layer :disabled="true" :url="osmUrl">
       </l-tile-layer>
-P
-      <l-layer-group name="Limites" layer-type="overlay" ref="boundaries_lg">
-        <l-geo-json v-if="boundariesGJ" :geojson="boundariesGJ" :options-style="boundaryStyle"></l-geo-json>
+
+      <l-layer-group :name="$t('app.layers.boundaries')" layer-type="overlay" ref="boundaries_lg">
+        <l-geo-json v-if="boundariesGJ" :geojson="boundariesGJ" :options-style="() => boundaryStyle"></l-geo-json>
       </l-layer-group>
 
       <l-marker v-if="originCoords" v-model:lat-lng="originCoords" :draggable="!results && !loading" :clickable=true 
           :icon="originIcon" ref="orig_marker"></l-marker>
 
-      <l-layer-group name="Points de Fuite" layer-type="overlay" ref="escape_points_lg">
-        <l-geo-json v-if="controlledEscapeGJ" :geojson="controlledEscapeGJ" :options="controlledEscapeOptions"></l-geo-json>
-        <l-geo-json v-if="uncontrolledEscapeGJ" :geojson="uncontrolledEscapeGJ" :options="uncontrolledEscapeOptions"></l-geo-json>
+      <l-layer-group :name="$t('app.layers.escapeNodes')" layer-type="overlay" ref="escape_points_lg">
+        <l-geo-json v-if="escapePointsGJ" :geojson="escapePointsGJ" :options="escapePointsOptions" :key="escapeNodesKey"></l-geo-json>
       </l-layer-group>
 
-      <l-layer-group name="Vehicules" layer-type="overlay">
+      <l-layer-group :name="$t('app.layers.vehicles')" layer-type="overlay">
         <l-marker
             v-for="v in vehicles"
             :key="v.id"
             :visible="v.visible"
             :draggable="!results && !loading"
-            v-model:lat-lng="v.coordinates"
+            v-model:lat-lng="v.position"
             :icon="v.status == 0?carAssignableIcon:v.status==3?carAssignedIcon:carUnassignedIcon"
             @click="removeVehicle(v)"
         >
-          <l-tooltip :content="v.tooltip" />
+          <l-tooltip :content="v.tooltip" :options="{ className: 'multiline-tooltip' }" />
         </l-marker>
       </l-layer-group>
 
-      <l-layer-group name="Trajets Passés" layer-type="overlay" ref="to_njois_lg">
-        <l-geo-json v-if="toNjoisGJ" :geojson="toNjoisGJ" :options-style="toNjoisStyle"></l-geo-json>
-      </l-layer-group>
+      <!-- Plan-specific layers: only shown when results are available -->
+      <template v-if="results">
+        <l-layer-group :name="$t('app.layers.pastPaths')" layer-type="overlay" ref="past_paths_lg">
+          <l-geo-json v-if="pastPathsGJ" :geojson="pastPathsGJ" :options-style="() => pastPathsStyle"></l-geo-json>
+        </l-layer-group>
 
-      <l-layer-group name="Isochrone" layer-type="overlay" ref="isochrone_lg">
-        <l-geo-json v-if="isochroneGJ" :geojson="isochroneGJ" :options-style="isochroneStyle"></l-geo-json>
-      </l-layer-group>
+        <l-layer-group :name="$t('app.layers.isochrones')" layer-type="overlay" ref="isochrone_lg">
+          <l-geo-json v-if="isochroneGJ" :geojson="isochroneGJ" :options-style="() => isochroneStyle"></l-geo-json>
+        </l-layer-group>
 
-      <l-layer-group name="Trajets Futurs" layer-type="overlay" ref="from_njois_lg">
-        <l-geo-json v-if="fromNjoisGJ" :geojson="fromNjoisGJ" :options-style="fromNjoisStyle"></l-geo-json>
-      </l-layer-group>
+        <l-layer-group :name="$t('app.layers.uncontrolledPaths')" layer-type="overlay" ref="uncontrolled_paths_lg">
+          <l-geo-json v-if="futurePathsUncontrolled" :geojson="futurePathsUncontrolled" :options-style="() => uncontrolledPathsStyle"></l-geo-json>
+        </l-layer-group>
 
-      <l-layer-group name="Affectations" layer-type="overlay" ref="affectations_lg">
-        <l-geo-json v-if="affectationsGJ" :geojson="affectationsGJ" :options="affectationsOptions"></l-geo-json>
-      </l-layer-group>
+        <l-layer-group :name="$t('app.layers.toControlPaths')" layer-type="overlay" ref="to_control_paths_lg">
+          <l-geo-json v-if="futurePathsToControl" :geojson="futurePathsToControl" :options-style="() => toControlPathsStyle"></l-geo-json>
+        </l-layer-group>
 
-      <l-layer-group name="Destinations" layer-type="overlay" ref="destinations_lg">
-        <l-geo-json v-if="destinationsGJ" :geojson="destinationsGJ" :options="destinationsOptions"></l-geo-json>
-      </l-layer-group>
+        <l-layer-group :name="$t('app.layers.fromControlPaths')" layer-type="overlay" ref="from_control_paths_lg">
+          <l-geo-json v-if="futurePathsFromControl" :geojson="futurePathsFromControl" :options-style="() => fromControlPathsStyle"></l-geo-json>
+        </l-layer-group>
+
+        <l-layer-group :name="$t('app.layers.assignments')" layer-type="overlay" ref="assignments_lg">
+          <l-geo-json v-if="assignmentsGJ" :geojson="assignmentsGJ" :options="assignmentsOptions"></l-geo-json>
+        </l-layer-group>
+
+        <l-layer-group :name="$t('app.layers.controls')" layer-type="overlay" ref="destinations_lg">
+          <l-geo-json v-if="destinationsGJ" :geojson="destinationsGJ" :options="destinationsOptions"></l-geo-json>
+        </l-layer-group>
+      </template>
 
     </l-map>
   </div>
@@ -132,7 +142,7 @@ import { AxiosResponse } from "axios";
 
 interface Vehicle {
   id: number;
-  coordinates: L.LatLng;
+  position: L.LatLng;
   visible: boolean;
   tooltip: string;
   status: number;
@@ -155,32 +165,34 @@ export default defineComponent({
     return {
       map: null as any,
       zoom: 13,
-      center: [0, 0] as L.LatLngExpression,
+      center: [0, 0] as [number, number],
       bounds: null as any,
       osmUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       zone: '60',
       availableNetworks: [] as string[],
       // Layers
       boundariesGJ: null as any,
-      originalEscapeGJ: null as any,  // Store original escape nodes data
-      controlledEscapeGJ: null as any,
-      uncontrolledEscapeGJ: null as any,
-      affectationsGJ: null as any,
+      escapePointsGJ: null as any,
+      assignmentsGJ: null as any,
       destinationsGJ: null as any,
       isochroneGJ: null as any,
-      toNjoisGJ: null as any,
-      fromNjoisGJ: null as any,
+      pastPathsGJ: null as any,
+      futurePathsUncontrolled: null as any,
+      futurePathsToControl: null as any,
+      futurePathsFromControl: null as any,
       originCoords: null as any,
+      uncontrolledEscapeNodes: [] as number[],
+      controlledEscapeNodes: [] as number[],
 
       mins: 5,
       secs: 0,
-      nb_random_vehicles: 10,
+      nb_random_vehicles: 4,
       vid: 1,
       vehicles: [] as Vehicle[],
-      carAssignableIcon: myIcons["carAssignable"],
-      carAssignedIcon: myIcons["carAssigned"],
-      carUnassignedIcon: myIcons["carUnassigned"],
-      originIcon: myIcons["origin"],
+      carAssignableIcon: myIcons["carAssignable"] as any,
+      carAssignedIcon: myIcons["carAssigned"] as any,
+      carUnassignedIcon: myIcons["carUnassigned"] as any,
+      originIcon: myIcons["origin"] as any,
       loading: false,
       results: false,
       stats_model: null as StatsData | null,
@@ -193,15 +205,22 @@ export default defineComponent({
         fillColor: "#00fe7e",
         fillOpacity: 0.2,
       } as any,
-      fromNjoisStyle: function(feature: any) {
-        return {
-          weight: 4,
-          color: feature.properties.watched?"#fe3400":"#00ff00",
-          opacity: 0.9,
-          zIndex: -10
-        }
+      uncontrolledPathsStyle: {
+        weight: 4,
+        color: "#ff0000",
+        opacity: 0.9,
       } as any,
-      toNjoisStyle: {
+      toControlPathsStyle: {
+        weight: 4,
+        color: "#0000ff",
+        opacity: 0.9,
+      } as any,
+      fromControlPathsStyle: {
+        weight: 4,
+        color: "#00ff00",
+        opacity: 1,
+      } as any,
+      pastPathsStyle: {
         weight: 4,
         color: "#fcff00",
         opacity: 1,
@@ -216,17 +235,31 @@ export default defineComponent({
   },
 
   computed: {
-    controlledEscapeOptions(): any {
-      return {
-        pointToLayer: function (feature: any, latlng: L.LatLng) {
-          return L.marker(latlng, {icon: myIcons["en-controlled"]});
-        }
-      }
+    escapeNodesKey(): string {
+      return this.uncontrolledEscapeNodes.join(',') + '-' + this.controlledEscapeNodes.join(',');
     },
-    uncontrolledEscapeOptions(): any {
+    escapePointsOptions(): any {
+      const uncontrolledIds = this.uncontrolledEscapeNodes; 
+      const controlledIds = this.controlledEscapeNodes;
+      const results = this.results; // True if a simulation is being displayed
       return {
         pointToLayer: function (feature: any, latlng: L.LatLng) {
-          return L.marker(latlng, {icon: myIcons["en-uncontrolled"]});
+          const osmid = feature.properties.osmid;
+          let iconName: keyof typeof myIcons;
+          if (!results) {
+            // Before plan generation, all escape nodes appear red
+            iconName = "en-uncontrolled";
+          } else if (uncontrolledIds.includes(osmid)) {
+            // Uncontrolled escape nodes: red
+            iconName = "en-uncontrolled";
+          } else if (controlledIds.includes(osmid)) {
+            // Controlled escape nodes: green
+            iconName = "en-controlled";
+          } else {
+            // Escape nodes reached via another escape node: grey
+            iconName = "en-irrelevant";
+          }
+          return L.marker(latlng, {icon: myIcons[iconName]});
         }
       }
     },
@@ -245,7 +278,7 @@ export default defineComponent({
       };
     },
 
-    affectationsOptions(): any {
+    assignmentsOptions(): any {
       return {
         weight: 3,
         dashArray: "2 5",
@@ -283,10 +316,10 @@ export default defineComponent({
             origin: feature.properties.origin,
             destination: feature.properties.destination,
             travel_time: feature.properties.travel_time,
-            time_margin: feature.properties.time_margin,
+            exp_waiting_time: feature.properties.exp_waiting_time,
             score: feature.properties.score
           }),
-          { permanent: false, sticky: true }
+          { permanent: false, sticky: true, className: 'multiline-tooltip' }
         );
       };
     },
@@ -344,10 +377,8 @@ export default defineComponent({
               const tempGeo = L.geoJSON(data["boundaries"]);
               this.bounds = tempGeo.getBounds();
 
-              // Store original escape nodes and by default, all are controlled
-              this.originalEscapeGJ = data["escape_points"];
-              this.controlledEscapeGJ = data["escape_points"];
-              this.uncontrolledEscapeGJ = null;
+              // Store escape nodes
+              this.escapePointsGJ = data["escape_points"];
               this.originCoords = data["origin_coords"];
             }
           }).catch((error: any) => {
@@ -363,32 +394,37 @@ export default defineComponent({
         .post(`generate`, {
           vehicles: this.vehicles.map(v => ({
             id: v.id,
-            coordinates: { lat: v.coordinates.lat, lng: v.coordinates.lng }
+            position: { lat: v.position.lat, lng: v.position.lng }
           })),
-          origin_coords: { lat: this.originCoords.lat, lng: this.originCoords.lng },
-          time_delta: this.mins*60 + this.secs
+          lkp: { lat: this.originCoords.lat, lng: this.originCoords.lng },
+          time_elapsed: this.mins*60 + this.secs
         })
         .then((response: AxiosResponse) => {
           if (response.status === 200) {
             this.results = true
-            this.originCoords = L.latLng(response.data["origin"])
+            this.originCoords = L.latLng(response.data["origin"][0], response.data["origin"][1])
             // reset the vehicles with the ones received from the response
             this.vehicles = [];
             this.addToVehicles(response.data["vehicles"]);
-            const travelData = response.data["travel_data"];
-            this.toNjoisGJ = travelData["past_paths"];
-            this.isochroneGJ = travelData["isochrone"];
-            this.fromNjoisGJ = travelData["future_paths"];
-            this.affectationsGJ = response.data["affectations"];
+            const planGeometry = response.data["plan_geometry"];
+            this.pastPathsGJ = planGeometry["past_paths"];
+            this.isochroneGJ = planGeometry["isochrone"];
+            this.futurePathsUncontrolled = planGeometry["uncontrolled_paths"];
+            this.futurePathsToControl = planGeometry["before_control_paths"];
+            this.futurePathsFromControl = planGeometry["after_control_paths"];
+            this.uncontrolledEscapeNodes = (planGeometry["uncontrolled_escape_nodes"]?.features || []).map((f: any) => f.properties.osmid);
+            this.controlledEscapeNodes = (planGeometry["controlled_escape_nodes"]?.features || []).map((f: any) => f.properties.osmid);
+            this.assignmentsGJ = response.data["assignments"];
             this.destinationsGJ = response.data["destinations"];
             this.stats_model = response.data["stats"]
-            
-            // Split escape nodes into controlled and uncontrolled
-            const uncontrolledNodeIds = response.data["controlled_nodes"]; // Will be renamed to uncontrolled_nodes in backend
-            this.splitEscapeNodes(uncontrolledNodeIds);
-            
-            // Visibility is handled by v-if="...GJ" in the template. 
-            // Since we just set the data, they will appear.
+
+            // Sync vehicle tooltips with assignments
+            this.vehicles.forEach(v => {
+              const assignment = this.assignmentsGJ.features.find((f: any) => f.properties.vid === v.id);
+              if (assignment) {
+                v.tooltip = this.$t('app.tooltips.affectation', assignment.properties);
+              }
+            });
           }
         }).catch((error: any) => {
           console.error('Error generating plan:', error);
@@ -412,7 +448,7 @@ export default defineComponent({
       if (!this.results && !this.loading) {
         this.vehicles.push({
           id: this.vid,
-          coordinates: e.latlng,
+          position: e.latlng,
           visible: true,
           tooltip: this.$t('app.tooltips.vid', { id: this.vid }),
           status: 0
@@ -422,7 +458,7 @@ export default defineComponent({
     },
 
     removeVehicle: function(v: Vehicle) {
-      const index = this.vehicles.indexOf(v);
+      const index = this.vehicles.findIndex(veh => veh.id === v.id);
       if (!this.results && !this.loading && index > -1) {
         this.vehicles.splice(index, 1);
       }
@@ -432,7 +468,7 @@ export default defineComponent({
       for(var i = 0; i < vehicles_json.length; i++) {
         this.vehicles.push(
           { id: vehicles_json[i].id,
-            coordinates: L.latLng(vehicles_json[i].coordinates),
+            position: L.latLng(vehicles_json[i].position),
             visible: true,
             tooltip: this.$t('app.tooltips.vid', { id: vehicles_json[i].id }),
             status: vehicles_json[i].status
@@ -447,47 +483,48 @@ export default defineComponent({
     },
 
     clearOutput: function () {
-      this.affectationsGJ = null
-      this.toNjoisGJ = null
-      this.fromNjoisGJ = null
+      // Remove plan-specific layers from control BEFORE setting results to false
+      // (otherwise the refs become null when v-if unmounts the components)
+      if (this.results) {
+        const layerControl = (this.$refs.layerControl as any)?.leafletObject;
+        if (layerControl) {
+          const planLayerRefs = [
+            'past_paths_lg',
+            'isochrone_lg',
+            'uncontrolled_paths_lg',
+            'to_control_paths_lg',
+            'from_control_paths_lg',
+            'assignments_lg',
+            'destinations_lg'
+          ];
+          planLayerRefs.forEach(refName => {
+            const layerGroup = (this.$refs[refName] as any)?.leafletObject;
+            if (layerGroup) {
+              layerControl.removeLayer(layerGroup);
+            }
+          });
+        }
+      }
+
+      this.assignmentsGJ = null
+      this.pastPathsGJ = null
+      this.futurePathsUncontrolled = null
+      this.futurePathsToControl = null
+      this.futurePathsFromControl = null
       this.isochroneGJ = null
       this.destinationsGJ = null
+      this.uncontrolledEscapeNodes = []
+      this.controlledEscapeNodes = []
       this.results = false
       this.stats_model = null
       this.outputsContent = ""
       
-      // Reset all escape nodes to controlled
-      this.controlledEscapeGJ = this.originalEscapeGJ;
-      this.uncontrolledEscapeGJ = null;
-      
-      this.vehicles.forEach(function (v) {
+      this.vehicles.forEach((v) => {
         v.status = 0;
+        v.tooltip = this.$t('app.tooltips.vid', { id: v.id });
       });
     },
 
-    splitEscapeNodes: function (uncontrolledNodeIds: number[]) {
-      // Get all escape node features from the original data
-      const allFeatures = this.controlledEscapeGJ?.features || [];
-      
-      // Split into controlled and uncontrolled
-      const controlled = allFeatures.filter((f: any) => 
-        !uncontrolledNodeIds.includes(f.properties.osmid)
-      );
-      const uncontrolled = allFeatures.filter((f: any) => 
-        uncontrolledNodeIds.includes(f.properties.osmid)
-      );
-      
-      // Update the GeoJSON objects
-      this.controlledEscapeGJ = controlled.length > 0 ? {
-        type: "FeatureCollection",
-        features: controlled
-      } : null;
-      
-      this.uncontrolledEscapeGJ = uncontrolled.length > 0 ? {
-        type: "FeatureCollection",
-        features: uncontrolled
-      } : null;
-    },
 
     clearAll: function () {
       this.clearOutput()
@@ -527,5 +564,10 @@ export default defineComponent({
   100% {
     transform: rotate(360deg);
   }
+}
+
+.multiline-tooltip {
+  white-space: pre !important;
+  min-width: 200px;
 }
 </style>

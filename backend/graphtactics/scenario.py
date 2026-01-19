@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from shapely.geometry import Point
 
 from .adversary import Adversary
+from .config import DEFAULT_TIME_MARGIN
 from .road_network import RoadNetwork
 from .vehicle import Vehicle
 
@@ -36,14 +37,16 @@ class Scenario:
         lk_point: Point,
         last_time_seen: datetime,
         vehicles: dict[int, Vehicle],
-        time_elapsed: timedelta,
+        time_elapsed: int,
+        time_margin: int = DEFAULT_TIME_MARGIN,
     ):
         """
         Initialize the InterceptionPlan with provided inputs and initialize
         all needed variables.
         """
         self.graph_name: str = network.name
-        self.time_elapsed: timedelta = time_elapsed
-        self.time_now: datetime = last_time_seen + time_elapsed
+        self.time_elapsed: int = time_elapsed
+        self.time_now: datetime = last_time_seen + timedelta(seconds=time_elapsed)
         self.adversary: Adversary = Adversary(network, lk_point, last_time_seen, time_elapsed)
         self.vehicles: dict[int, Vehicle] = vehicles
+        self.time_margin: int = time_margin
